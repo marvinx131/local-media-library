@@ -46,7 +46,7 @@
   --el-switch-on-color: #733ff1;
 }
 
-/* 视图模式切换（文字/缩图）夜间激活色 #383838 */
+/* 视图模式切换（缩图/文字/图文）夜间激活色 #383838 */
 [data-theme="dark"] .view-mode-toggle.el-radio-group .el-radio-button {
   --el-radio-button-checked-bg-color: #383838;
   --el-radio-button-checked-border-color: #383838;

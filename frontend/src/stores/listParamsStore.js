@@ -9,15 +9,19 @@ const STORAGE_KEY = 'javlibrary_list_params';
 const defaultState = () => ({
   pageSize: 20,
   sortBy: 'premiered-desc',
-  viewMode: 'thumbnail' // 'text' | 'thumbnail'
+  viewMode: 'card' // 'thumbnail' 缩图(瀑布流) | 'text' 文字 | 'card' 图文(默认)
 });
+
+const VALID_VIEW_MODES = ['thumbnail', 'text', 'card'];
 
 function loadFromStorage() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      return { ...defaultState(), ...parsed };
+      const state = { ...defaultState(), ...parsed };
+      if (!VALID_VIEW_MODES.includes(state.viewMode)) state.viewMode = 'card';
+      return state;
     }
   } catch (e) {
     console.warn('listParamsStore: loadFromStorage failed', e);
