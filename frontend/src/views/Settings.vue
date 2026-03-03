@@ -1,10 +1,13 @@
 <template>
   <div class="settings">
     <el-container>
-      <el-header>
-        <h1 style="margin: 0;">设置</h1>
+      <el-header class="page-header">
+        <div class="header-content">
+          <h1 class="header-title">设置</h1>
+          <ThemeSwitch />
+        </div>
       </el-header>
-      <el-main>
+      <el-main class="page-theme-bg">
         <el-card>
           <template #header>
             <span>数据路径设置</span>
@@ -51,6 +54,19 @@
             <span>数据扫描</span>
           </template>
           <el-form label-width="120px">
+            <el-form-item label="启动时自动扫描">
+              <el-switch
+                v-model="autoScanOnStartup"
+                @change="handleAutoScanOnStartupChange"
+                active-text="开启"
+                inactive-text="关闭"
+              />
+            </el-form-item>
+            <el-form-item label="说明">
+              <el-text type="info" size="small" style="display: block;">
+                开启后，应用会在启动时自动执行一次增量扫描操作。
+              </el-text>
+            </el-form-item>
             <el-form-item label="扫描操作">
               <el-button type="default" @click="scanData" :loading="scanning" :disabled="scanning || syncDiffLoading">
                 完整扫描
@@ -167,13 +183,18 @@
 </template>
 
 <script setup>
+defineOptions({ name: 'Settings' });
 import { ref, onMounted, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { Plus, Delete } from '@element-plus/icons-vue';
+import ThemeSwitch from '../components/ThemeSwitch.vue';
+import { useScanStore } from '../stores/scanStore';
 
 const router = useRouter();
+const scanStore = useScanStore();
 const dataPaths = ref([]);
+const autoScanOnStartup = ref(true);
 const scanning = ref(false);
 const syncDiffLoading = ref(false);
 const syncDiffProgress = ref({
@@ -222,6 +243,24 @@ const loadFilterPlayable = async () => {
     filterPlayable.value = await window.electronAPI.settings.getFilterPlayable();
   } catch (error) {
     console.error('加载过滤设置失败:', error);
+  }
+};
+
+const loadAutoScanOnStartup = async () => {
+  try {
+    autoScanOnStartup.value = await window.electronAPI.settings.getAutoScanOnStartup();
+  } catch (error) {
+    console.error('加载自动扫描设置失败:', error);
+  }
+};
+
+const handleAutoScanOnStartupChange = async (value) => {
+  try {
+    await window.electronAPI.settings.setAutoScanOnStartup(value);
+    ElMessage.success(value ? '已开启启动时自动扫描' : '已关闭启动时自动扫描');
+  } catch (error) {
+    console.error('保存自动扫描设置失败:', error);
+    ElMessage.error('保存设置失败: ' + error.message);
   }
 };
 
@@ -311,6 +350,12 @@ const runSyncDiff = async () => {
   syncDiffProgress.value = { phase: '', current: 0, total: 0, message: '准备中…', percentage: 0 };
   try {
     const result = await window.electronAPI.system.runStartupSync();
+    if (result.alreadyRunning) {
+      ElMessage.info('已有扫描任务进行中，请查看下方进度');
+      syncDiffLoading.value = result.type === 'incremental';
+      scanning.value = result.type === 'full';
+      return;
+    }
     if (result.success === false) {
       ElMessage.error(result.message || '执行失败');
       return;
@@ -326,6 +371,7 @@ const runSyncDiff = async () => {
     } else {
       ElMessage.info('数据已与磁盘一致，无需更新');
     }
+    scanStore.incrementDataVersion();
   } catch (error) {
     console.error('仅扫描新增或修改失败:', error);
     ElMessage.error('执行失败: ' + (error?.message || '未知错误'));
@@ -338,7 +384,6 @@ const runSyncDiff = async () => {
 const scanData = async () => {
   try {
     scanning.value = true;
-    // 重置进度
     scanProgress.value = {
       current: 0,
       total: 0,
@@ -347,15 +392,19 @@ const scanData = async () => {
       percentage: 0,
       status: null
     };
-    
+
     ElMessage.info('开始扫描数据文件夹，请稍候...');
-    
     const result = await window.electronAPI.system.scan();
+    if (result && result.alreadyRunning) {
+      ElMessage.info('已有扫描任务进行中，请查看下方进度');
+      scanning.value = result.type === 'full';
+      syncDiffLoading.value = result.type === 'incremental';
+      return;
+    }
     if (result && result.success) {
-      // 更新最终进度
       scanProgress.value.percentage = 100;
       scanProgress.value.status = result.failed > 0 ? 'exception' : 'success';
-      
+      scanStore.incrementDataVersion();
       // 弹窗提示结果
       await ElMessageBox.alert(
         `扫描完成！\n总计: ${result.total}\n成功: ${result.successCount ?? result.success}\n失败: ${result.failed}`,
@@ -421,14 +470,20 @@ const goBack = () => {
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
   loadDataPaths();
   loadFilterPlayable();
+  loadAutoScanOnStartup();
+
+  const status = await window.electronAPI?.system?.getScanStatus?.();
+  if (status?.inProgress && status?.type) {
+    scanning.value = status.type === 'full';
+    syncDiffLoading.value = status.type === 'incremental';
+  }
 
   // 监听增量同步进度（仅在本页触发的增量扫描时更新 UI）
   if (window.electronAPI?.system?.onStartupSyncProgress) {
     window.electronAPI.system.onStartupSyncProgress((data) => {
-      if (!syncDiffLoading.value) return;
       const total = data.total || 0;
       const current = data.current || 0;
       syncDiffProgress.value = {
@@ -438,6 +493,9 @@ onMounted(() => {
         message: data.message || '',
         percentage: total > 0 ? Math.round((current / total) * 100) : (data.phase === 'done' ? 100 : 0)
       };
+      if (data.phase === 'done') {
+        syncDiffLoading.value = false;
+      }
     });
   }
 
@@ -456,7 +514,7 @@ onMounted(() => {
     });
   }
   
-  // 监听扫描完成事件
+  // 监听扫描完成事件（完整扫描结束时清除 loading，无论是本页触发还是启动/其他处触发）
   if (window.electronAPI?.system?.onScanCompleted) {
     window.electronAPI.system.onScanCompleted((result) => {
       console.log('扫描完成:', result);
@@ -465,6 +523,7 @@ onMounted(() => {
       scanProgress.value.current = result.total || scanProgress.value.total;
       scanProgress.value.success = result.success || 0;
       scanProgress.value.failed = result.failed || 0;
+      scanning.value = false;
     });
   }
   
@@ -492,9 +551,16 @@ onMounted(() => {
   height: 100%;
 }
 
-.el-header {
-  background-color: #409eff;
-  color: white;
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.header-title { margin: 0; }
+.page-header {
+  background-color: var(--header-bg);
+  color: var(--title-color);
   display: flex;
   align-items: center;
   padding: 0 20px;

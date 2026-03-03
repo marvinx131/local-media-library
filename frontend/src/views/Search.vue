@@ -1,10 +1,13 @@
 <template>
   <div class="search">
     <el-container>
-      <el-header>
-        <h1 style="margin: 0;">搜索</h1>
+      <el-header class="page-header">
+        <div class="header-content">
+          <h1 class="header-title">搜索</h1>
+          <ThemeSwitch />
+        </div>
       </el-header>
-      <el-main>
+      <el-main class="page-theme-bg">
         <el-card>
           <el-tabs v-model="activeTab">
             <!-- 简易搜索 -->
@@ -135,11 +138,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+defineOptions({ name: 'Search' });
+import { ref, onMounted, onActivated } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
+import { useScanStore } from '../stores/scanStore';
+import ThemeSwitch from '../components/ThemeSwitch.vue';
 
 const router = useRouter();
+const scanStore = useScanStore();
+const lastRefreshedDataVersion = ref(0);
 const activeTab = ref('simple');
 const searching = ref(false);
 
@@ -163,33 +171,38 @@ const availableActors = ref([]);
 
 const loadOptions = async () => {
   try {
-    // 加载导演列表
-    const directorsResult = await window.electronAPI.directors.getList();
+    const [directorsResult, studiosResult, genresResult, actorsResult] = await Promise.all([
+      window.electronAPI.directors.getList({ namesOnly: true }),
+      window.electronAPI.studios.getList({ namesOnly: true }),
+      window.electronAPI.genres.getList({ namesOnly: true }),
+      window.electronAPI.actors.getList({ viewMode: 'actor', namesOnly: true })
+    ]);
     if (directorsResult.success && directorsResult.data) {
       availableDirectors.value = directorsResult.data.map(d => d.name).filter(Boolean);
     }
-    
-    // 加载制作商列表
-    const studiosResult = await window.electronAPI.studios.getList();
     if (studiosResult.success && studiosResult.data) {
       availableStudios.value = studiosResult.data.map(s => s.name).filter(Boolean);
     }
-    
-    // 加载分类列表
-    const genresResult = await window.electronAPI.genres.getList();
     if (genresResult.success && genresResult.data) {
       availableGenres.value = genresResult.data.map(g => g.name).filter(Boolean);
     }
-    
-    // 加载演员列表
-    const actorsResult = await window.electronAPI.actors.getList({ viewMode: 'actor' });
     if (actorsResult.success && actorsResult.data) {
       availableActors.value = actorsResult.data.map(a => a.name).filter(Boolean);
+    }
+    if (directorsResult.success || studiosResult.success || genresResult.success || actorsResult.success) {
+      lastRefreshedDataVersion.value = scanStore.dataVersion;
     }
   } catch (error) {
     console.error('加载选项列表失败:', error);
   }
 };
+
+onActivated(() => {
+  if (scanStore.dataVersion > lastRefreshedDataVersion.value) {
+    lastRefreshedDataVersion.value = scanStore.dataVersion;
+    loadOptions();
+  }
+});
 
 const handleSimpleSearch = async () => {
   if (!simpleForm.value.keyword || simpleForm.value.keyword.trim() === '') {
@@ -319,9 +332,16 @@ onMounted(() => {
   height: 100%;
 }
 
-.el-header {
-  background-color: #409eff;
-  color: white;
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.header-title { margin: 0; }
+.page-header {
+  background-color: var(--header-bg);
+  color: var(--title-color);
   display: flex;
   align-items: center;
   padding: 0 20px;

@@ -14,6 +14,8 @@
             <el-option label="30" :value="30" />
             <el-option label="50" :value="50" />
             <el-option label="100" :value="100" />
+            <el-option label="500" :value="500" />
+            <el-option label="1000" :value="1000" />
           </el-select>
           <span style="margin-left: 16px;">排序：</span>
           <el-select
@@ -34,11 +36,13 @@
         <div class="toolbar-right">
           <el-radio-group
             v-if="enableViewModeToggle"
+            class="view-mode-toggle"
             :model-value="viewMode"
             @change="$emit('update:viewMode', $event)"
           >
-            <el-radio-button label="text">文字模式</el-radio-button>
             <el-radio-button label="thumbnail">缩图模式</el-radio-button>
+            <el-radio-button label="text">文字模式</el-radio-button>
+            <el-radio-button label="card">图文模式</el-radio-button>
           </el-radio-group>
           <!-- 预留右侧插槽 -->
           <slot name="right-extra" />
@@ -51,9 +55,41 @@
       <el-empty :description="emptyText" />
     </div>
     <div v-else>
+      <!-- 缩图模式：动态宽度多列，两边边距一致；悬浮时固定层放大+动画 -->
+      <div
+        v-if="viewMode === 'thumbnail'"
+        ref="posterWaterfallRef"
+        class="poster-waterfall"
+        :style="posterWaterfallStyle"
+      >
+        <div
+          v-for="movie in movies"
+          :key="movie.id"
+          class="poster-waterfall-item"
+          :style="posterItemStyle"
+          @click="onPosterClick(movie)"
+          @mouseenter="e => onPosterHover(e, movie)"
+          @mouseleave="onPosterLeave"
+        >
+          <div class="poster-waterfall-img-wrap" :style="posterWrapStyle">
+            <el-image
+              :src="imageCache?.[getImageCacheKey(movie?.poster_path, movie?.data_path_index)] || ''"
+              fit="cover"
+              class="poster-waterfall-img"
+              :lazy="true"
+              @load="onImageLoad(movie)"
+            >
+              <template #error>
+                <div class="poster-waterfall-slot" :style="posterWrapStyle">暂无封面</div>
+              </template>
+            </el-image>
+          </div>
+        </div>
+      </div>
+
       <!-- 文字模式 -->
       <el-table
-        v-if="viewMode === 'text'"
+        v-else-if="viewMode === 'text'"
         :data="movies"
         style="width: 100%"
         @row-click="row => $emit('rowClick', row)"
@@ -63,7 +99,7 @@
         <el-table-column prop="premiered" label="发行日期" width="120" />
       </el-table>
 
-      <!-- 缩图模式 -->
+      <!-- 图文模式：卡片网格 -->
       <div v-else class="movies-grid">
         <el-card
           v-for="movie in movies"
@@ -103,20 +139,93 @@
           v-model:current-page="internalCurrentPage"
           v-model:page-size="internalPageSize"
           :total="total"
-          :page-sizes="[10, 20, 30, 50, 100]"
+          :page-sizes="[10, 20, 30, 50, 100, 500, 1000]"
           layout="total, sizes, prev, pager, next, jumper"
           @size-change="val => $emit('update:pageSize', val)"
           @current-change="val => $emit('update:currentPage', val)"
         />
       </div>
+      <!-- 缩图模式悬浮放大层：挂到 body + 进入/离开动画 -->
+      <Teleport to="body">
+        <Transition name="poster-overlay">
+          <div
+            v-if="hoveredPoster"
+            class="poster-waterfall-overlay"
+            :style="hoveredPoster.style"
+          >
+            <img
+              :src="hoveredPoster.src"
+              alt=""
+              class="poster-waterfall-overlay-img"
+            />
+          </div>
+        </Transition>
+      </Teleport>
     </div>
   </el-card>
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { useElementSize } from '@vueuse/core';
 import { VideoPlay } from '@element-plus/icons-vue';
 import { getImageCacheKey } from '../utils/imageLoader';
+
+const BASE_COL_WIDTH = 150;
+const ASPECT_RATIO = 0.7;
+const HOVER_SCALE = 1.5;
+const hoveredPoster = ref(null);
+const posterWaterfallRef = ref(null);
+const { width: waterfallWidth } = useElementSize(posterWaterfallRef);
+
+const posterLayout = computed(() => {
+  const w = waterfallWidth.value || BASE_COL_WIDTH * 4;
+  const cols = Math.max(1, Math.round(w / BASE_COL_WIDTH));
+  const itemWidth = w / cols;
+  const itemHeight = itemWidth / ASPECT_RATIO;
+  return { cols, itemWidth, itemHeight };
+});
+
+const posterWaterfallStyle = computed(() => ({
+  gridTemplateColumns: `repeat(${posterLayout.value.cols}, ${posterLayout.value.itemWidth}px)`
+}));
+
+const posterItemStyle = computed(() => ({
+  width: `${posterLayout.value.itemWidth}px`
+}));
+
+const posterWrapStyle = computed(() => ({
+  width: `${posterLayout.value.itemWidth}px`,
+  height: `${posterLayout.value.itemHeight}px`
+}));
+
+function onPosterHover(e, movie) {
+  const el = e.currentTarget;
+  const rect = el.getBoundingClientRect();
+  const { itemWidth, itemHeight } = posterLayout.value;
+  const w = itemWidth * HOVER_SCALE;
+  const h = itemHeight * HOVER_SCALE;
+  hoveredPoster.value = {
+    style: {
+      left: `${rect.left + rect.width / 2 - w / 2}px`,
+      top: `${rect.top + rect.height / 2 - h / 2}px`,
+      width: `${w}px`,
+      height: `${h}px`
+    },
+    src: props.imageCache?.[getImageCacheKey(movie?.poster_path, movie?.data_path_index)] || ''
+  };
+}
+
+function onPosterLeave() {
+  hoveredPoster.value = null;
+}
+
+const emit = defineEmits(['rowClick', 'update:pageSize', 'update:currentPage', 'update:sortBy', 'update:viewMode']);
+
+function onPosterClick(movie) {
+  hoveredPoster.value = null;
+  emit('rowClick', movie);
+}
 
 const props = defineProps({
   loading: { type: Boolean, default: false },
@@ -125,7 +234,7 @@ const props = defineProps({
   currentPage: { type: Number, default: 1 },
   pageSize: { type: Number, default: 20 },
   sortBy: { type: String, default: 'premiered-desc' },
-  viewMode: { type: String, default: 'thumbnail' }, // 'text' | 'thumbnail'
+  viewMode: { type: String, default: 'card' }, // 'thumbnail' | 'text' | 'card'
   imageCache: { type: Object, default: () => ({}) },
   emptyText: { type: String, default: '暂无影片数据' },
   enableViewModeToggle: { type: Boolean, default: true },
@@ -173,6 +282,86 @@ const onImageLoad = (movie) => {
 
 .empty-state {
   padding: 40px 0;
+}
+
+/* 缩图模式：动态列宽由 style 注入，无边框无间距 */
+.poster-waterfall {
+  display: grid;
+  gap: 0;
+  justify-content: start;
+  width: 100%;
+  padding: 0;
+}
+
+.poster-waterfall-item {
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.poster-waterfall-img-wrap {
+  overflow: hidden;
+  position: relative;
+}
+
+.poster-waterfall-img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.poster-waterfall-img-wrap :deep(.el-image) {
+  width: 100%;
+  height: 100%;
+}
+
+.poster-waterfall-img-wrap :deep(.el-image__inner) {
+  object-fit: cover;
+}
+
+/* 悬浮放大层：position:fixed + 进入/离开动画（缩放以中心为原点） */
+.poster-waterfall-overlay {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 2px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  transform-origin: center;
+}
+
+.poster-waterfall-overlay-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 悬浮层过渡：缩放 + 透明度 */
+.poster-overlay-enter-active,
+.poster-overlay-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.poster-overlay-enter-from,
+.poster-overlay-leave-to {
+  opacity: 0;
+  transform: scale(0.92);
+}
+
+.poster-overlay-enter-to,
+.poster-overlay-leave-from {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.poster-waterfall-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--image-slot-bg);
+  color: var(--image-slot-color);
+  font-size: 12px;
 }
 
 .movies-grid {
@@ -233,7 +422,7 @@ const onImageLoad = (movie) => {
   font-size: 14px;
   font-weight: bold;
   margin-bottom: 4px;
-  color: #303133;
+  color: var(--movie-title-color);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

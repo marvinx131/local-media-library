@@ -1,24 +1,27 @@
 <template>
   <div class="catalog-list">
     <el-container>
-      <el-header>
-        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-          <h1 style="margin: 0;">{{ getCurrentCatalogTitle() }}</h1>
-          <el-select
-            v-model="currentCatalog"
-            style="width: 180px;"
-            @change="handleCatalogChange"
-            class="catalog-selector"
-          >
-            <el-option label="女优" value="actor-actor" />
-            <el-option label="文件目录" value="actor-folder" />
-            <el-option label="导演" value="director" />
-            <el-option label="制作商" value="studio" />
-            <el-option label="分类" value="genre" />
-          </el-select>
+      <el-header class="page-header">
+        <div class="header-content">
+          <h1 class="header-title">{{ getCurrentCatalogTitle() }}</h1>
+          <div class="header-right">
+            <el-select
+              v-model="currentCatalog"
+              style="width: 180px;"
+              @change="handleCatalogChange"
+              class="catalog-selector"
+            >
+              <el-option label="女优" value="actor-actor" />
+              <el-option label="文件目录" value="actor-folder" />
+              <el-option label="导演" value="director" />
+              <el-option label="制作商" value="studio" />
+              <el-option label="分类" value="genre" />
+            </el-select>
+            <ThemeSwitch />
+          </div>
         </div>
       </el-header>
-      <el-main>
+      <el-main class="page-theme-bg">
         <el-card>
           <div v-if="loading">加载中...</div>
           <div v-else-if="actors.length === 0" class="empty-state">
@@ -30,7 +33,7 @@
                 :key="item.id"
                 class="actor-card"
                 shadow="hover"
-                @click="goToDetail(item.id)"
+                @click="goToDetail(item)"
               >
                 <div class="actor-info">
                   <div class="actor-name">{{ item.name }}</div>
@@ -47,11 +50,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+defineOptions({ name: 'ActorCatalog' });
+import { ref, onMounted, onActivated, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
+import { useScanStore } from '../stores/scanStore';
+import ThemeSwitch from '../components/ThemeSwitch.vue';
 
 const router = useRouter();
+const scanStore = useScanStore();
+const lastRefreshedDataVersion = ref(0);
 const loading = ref(true);
 const actors = ref([]);
 const filterPlayable = ref(false);
@@ -128,6 +136,7 @@ const loadCatalog = async () => {
 
     if (result.success) {
       actors.value = result.data || [];
+      lastRefreshedDataVersion.value = scanStore.dataVersion;
     } else {
       ElMessage.error('加载列表失败: ' + (result.message || '未知错误'));
     }
@@ -160,9 +169,13 @@ const goToDetail = (item) => {
 
   if (type === 'actor') {
     if (mode === 'folder') {
-      // 文件目录模式：id是文件夹名（从folder_xxx格式中提取）
-      const folderName = typeof itemId === 'string' && itemId.startsWith('folder_') 
-        ? itemId.replace('folder_', '') 
+      // 文件目录模式：若该文件夹下仅一部影片，直接进入详情页；否则进入列表页
+      if (item.totalCount === 1 && item.movieId) {
+        router.push(`/movie/${item.movieId}`);
+        return;
+      }
+      const folderName = typeof itemId === 'string' && itemId.startsWith('folder_')
+        ? itemId.replace('folder_', '')
         : itemId;
       router.push(`/actor/${encodeURIComponent(folderName)}?viewMode=folder`);
     } else {
@@ -203,11 +216,16 @@ const loadFilterPlayable = async () => {
   }
 };
 
+onActivated(() => {
+  if (scanStore.dataVersion > lastRefreshedDataVersion.value) {
+    lastRefreshedDataVersion.value = scanStore.dataVersion;
+    loadCatalog();
+  }
+});
+
 onMounted(() => {
   loadFilterPlayable();
   loadCatalog();
-  
-  // 监听文件变化事件
   if (window.electronAPI?.system?.onFileChange) {
     window.electronAPI.system.onFileChange((data) => {
       console.log('文件变化:', data);
@@ -247,9 +265,17 @@ onMounted(() => {
   height: 100%;
 }
 
-.el-header {
-  background-color: #409eff;
-  color: white;
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+.header-title { margin: 0; }
+.header-right { display: flex; align-items: center; gap: 12px; }
+.page-header {
+  background-color: var(--header-bg);
+  color: var(--title-color);
   display: flex;
   align-items: center;
   padding: 0 20px;
@@ -284,12 +310,12 @@ onMounted(() => {
   font-size: 12px;
   font-weight: bold;
   margin-bottom: 2px;
-  color: #303133;
+  color: var(--content-title-color);
 }
 
 .actor-meta {
   font-size: 10px;
-  color: #909399;
+  color: var(--content-subtitle-color);
 }
 
 .playable-count {
@@ -303,18 +329,19 @@ onMounted(() => {
   font-weight: normal;
 }
 
-/* 下拉框样式 */
-:deep(.catalog-selector .el-input__inner) {
-  background-color: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.3);
+/* 日间头部下拉框：白字、半透明背景；夜间由 Element 暗色主题接管 */
+[data-theme="light"] :deep(.catalog-selector) {
   color: white;
 }
-
-:deep(.catalog-selector .el-input__inner::placeholder) {
-  color: rgba(255, 255, 255, 0.7);
+[data-theme="light"] :deep(.catalog-selector .el-input__wrapper) {
+  background-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3) inset;
 }
-
-:deep(.catalog-selector .el-input__suffix .el-input__suffix-inner .el-select__caret) {
+[data-theme="light"] :deep(.catalog-selector .el-input__inner),
+[data-theme="light"] :deep(.catalog-selector .el-input__wrapper) {
+  color: white;
+}
+[data-theme="light"] :deep(.catalog-selector .el-select__caret) {
   color: white;
 }
 </style>

@@ -29,7 +29,11 @@
       </el-menu>
     </div>
     <div class="router-view-container">
-      <router-view />
+      <router-view v-slot="{ Component, route: r }">
+        <keep-alive :max="10" :include="cachedViewNames">
+          <component :is="Component" :key="r.fullPath" />
+        </keep-alive>
+      </router-view>
     </div>
   </div>
 </template>
@@ -38,9 +42,13 @@
 import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { pauseBackgroundLoading, resumeBackgroundLoading } from './utils/imageLoader';
+import { useScanStore } from './stores/scanStore';
 
 const route = useRoute();
+const scanStore = useScanStore();
 const activeMenu = computed(() => route.path);
+
+const cachedViewNames = ['MovieListPage', 'Search', 'ActorCatalog', 'GenreCatalog', 'StudioCatalog', 'DirectorCatalog'];
 
 const menuVisible = ref(true);
 let lastScrollTop = 0;
@@ -81,8 +89,12 @@ watch(() => route.path, (newPath, oldPath) => {
 onMounted(() => {
   window.addEventListener('scroll', handleScroll, { passive: true });
   lastScrollTop = window.pageYOffset || document.documentElement.scrollTop;
-  // 页面加载完成后恢复后台加载
   resumeBackgroundLoading();
+  if (window.electronAPI?.system?.onFileChange) {
+    window.electronAPI.system.onFileChange((data) => {
+      if (data?.type === 'startup_sync_done') scanStore.incrementDataVersion();
+    });
+  }
 });
 
 onBeforeUnmount(() => {
@@ -106,6 +118,13 @@ body {
 #app {
   width: 100%;
   height: 100vh;
+  background-color: var(--page-bg);
+}
+
+.router-view-container {
+  background-color: var(--page-bg);
+  padding-top: 60px;
+  height: calc(100% - 60px);
 }
 
 .menu-container {
@@ -114,7 +133,7 @@ body {
   left: 0;
   right: 0;
   z-index: 1000;
-  background-color: #fff;
+  background-color: var(--nav-bg);
   transition: transform 0.3s ease-in-out;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -124,19 +143,10 @@ body {
 }
 
 .main-menu {
-  border-bottom: 1px solid #e6e6e6;
+  border-bottom: 1px solid var(--header-border);
 }
 
 /* 为所有页面容器添加顶部margin，避免被固定菜单遮挡 */
-/* :deep(.el-container) {
-  margin-top: 60px;
-} */
-.router-view-container{
-  padding-top: 60px;
-  height: calc(100% - 60px);
-}
-
-/* 或者为所有页面容器添加顶部margin */
 /* .el-container {
   margin-top: 60px;
 } */

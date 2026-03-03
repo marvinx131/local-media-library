@@ -9,7 +9,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     create: (data) => ipcRenderer.invoke('movies:create', data),
     update: (id, data) => ipcRenderer.invoke('movies:update', id, data),
     delete: (id, deleteFile) => ipcRenderer.invoke('movies:delete', id, deleteFile),
-    getSeries: (code) => ipcRenderer.invoke('movies:getSeries', code),
+    getSeries: (code, options) => ipcRenderer.invoke('movies:getSeries', code, options),
     getImage: (path, dataPathIndex) => ipcRenderer.invoke('movies:getImage', path, dataPathIndex),
     getDetailExtras: (id) => ipcRenderer.invoke('movies:getDetailExtras', id),
     openFileLocation: (id) => ipcRenderer.invoke('movies:openFileLocation', id)
@@ -24,7 +24,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // 分类相关
   genres: {
-    getList: () => ipcRenderer.invoke('genres:getList'),
+    getList: (params) => ipcRenderer.invoke('genres:getList', params || {}),
     getById: (id) => ipcRenderer.invoke('genres:getById', id),
     getMovies: (id, params) => ipcRenderer.invoke('genres:getMovies', id, params),
     getOrCreateByName: (name) => ipcRenderer.invoke('genres:getOrCreateByName', name)
@@ -32,19 +32,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // 制作商相关
   studios: {
-    getList: () => ipcRenderer.invoke('studios:getList'),
+    getList: (params) => ipcRenderer.invoke('studios:getList', params || {}),
     getMovies: (id, params) => ipcRenderer.invoke('studios:getMovies', id, params)
   },
   
   // 导演相关
   directors: {
-    getList: () => ipcRenderer.invoke('directors:getList'),
+    getList: (params) => ipcRenderer.invoke('directors:getList', params || {}),
     getMovies: (id, params) => ipcRenderer.invoke('directors:getMovies', id, params)
   },
   
   // 搜索相关
   search: {
-    simple: (keyword) => ipcRenderer.invoke('search:simple', keyword),
+    simple: (keyword, options) => ipcRenderer.invoke('search:simple', keyword, options),
     advanced: (params) => ipcRenderer.invoke('search:advanced', params)
   },
   
@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   system: {
     scan: () => ipcRenderer.invoke('system:scan'),
     runStartupSync: () => ipcRenderer.invoke('system:runStartupSync'),
+    getScanStatus: () => ipcRenderer.invoke('system:getScanStatus'),
     getStats: () => ipcRenderer.invoke('system:getStats'),
     isDatabaseReady: () => ipcRenderer.invoke('system:isDatabaseReady'),
     onFileChange: (callback) => {
@@ -90,7 +91,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 设置相关
   settings: {
     getFilterPlayable: () => ipcRenderer.invoke('settings:getFilterPlayable'),
-    setFilterPlayable: (value) => ipcRenderer.invoke('settings:setFilterPlayable', value)
+    setFilterPlayable: (value) => ipcRenderer.invoke('settings:setFilterPlayable', value),
+    getAutoScanOnStartup: () => ipcRenderer.invoke('settings:getAutoScanOnStartup'),
+    setAutoScanOnStartup: (value) => ipcRenderer.invoke('settings:setAutoScanOnStartup', value)
   },
   
   // 播放相关
