@@ -34,6 +34,8 @@
           <slot name="left-extra" />
         </div>
         <div class="toolbar-right">
+          <!-- 抽奖入口：在视图模式左侧 -->
+          <slot name="before-view-mode" />
           <el-radio-group
             v-if="enableViewModeToggle"
             class="view-mode-toggle"

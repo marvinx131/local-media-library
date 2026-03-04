@@ -393,6 +393,63 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     }
   });
 
+  /** 随机获取 count 条影片（用于老虎机抽奖），遵守“仅显示可播放”设置 */
+  ipcMain.handle('movies:getRandomList', async (event, params = {}) => {
+    try {
+      const sequelize = getSequelize();
+      if (!sequelize || !sequelize.models?.Movie) {
+        return { success: false, message: '数据库未初始化', data: [] };
+      }
+      const Movie = sequelize.models.Movie;
+      const count = Math.min(Math.max(1, parseInt(params.count, 10) || 18), 100);
+      const where = {};
+      if (settingsStore.get('filterPlayable', false)) {
+        where.playable = true;
+      }
+      const include = [
+        { model: sequelize.models.Actor, through: { attributes: [] }, attributes: ['id', 'name'] },
+        { model: sequelize.models.Genre, through: { attributes: [] }, attributes: ['id', 'name'] },
+        { model: sequelize.models.Studio, attributes: ['id', 'name'], required: false }
+      ];
+      const { rows } = await Movie.findAndCountAll({
+        where,
+        include,
+        order: sequelize.literal('RANDOM()'),
+        limit: count,
+        distinct: true
+      });
+      const moviesData = rows.map(movie => {
+        const movieData = {
+          id: movie.id,
+          title: movie.title,
+          code: movie.code,
+          runtime: movie.runtime,
+          premiered: movie.premiered,
+          director: movie.director,
+          studio_id: movie.studio_id,
+          poster_path: movie.poster_path,
+          fanart_path: movie.fanart_path,
+          nfo_path: movie.nfo_path,
+          folder_path: movie.folder_path,
+          playable: movie.playable,
+          video_path: movie.video_path,
+          data_path_index: movie.data_path_index || 0,
+          folder_updated_at: movie.folder_updated_at,
+          created_at: movie.created_at,
+          updated_at: movie.updated_at
+        };
+        if (movie.Actors?.length) movieData.actors = movie.Actors.map(a => ({ id: a.id, name: a.name }));
+        if (movie.Genres?.length) movieData.genres = movie.Genres.map(g => ({ id: g.id, name: g.name }));
+        if (movie.Studio) movieData.studio = { id: movie.Studio.id, name: movie.Studio.name };
+        return movieData;
+      });
+      return { success: true, data: moviesData };
+    } catch (error) {
+      console.error('获取随机影片列表失败:', error);
+      return { success: false, message: error.message, data: [] };
+    }
+  });
+
   ipcMain.handle('movies:getById', async (event, id) => {
     try {
       const sequelize = getSequelize();

@@ -83,10 +83,24 @@
           @rowClick="goToMovieDetail"
           :load-movie-image="movie => loadMovieImage(movie.poster_path, movie.data_path_index)"
         >
+          <template #before-view-mode>
+            <div class="lottery-entry">
+              <div class="lottery-hint-row">
+                <span class="lottery-hint">不知道看什么了？试试随机抽奖吧</span>
+                <el-tooltip content="从库中随机选取18条数据然后抽取3条" placement="top">
+                  <span class="lottery-hint-icon-wrap">
+                    <el-icon><QuestionFilled /></el-icon>
+                  </span>
+                </el-tooltip>
+              </div>
+              <el-button type="primary" size="small" class="lottery-btn" @click="openSlotDialog">开始抽奖</el-button>
+            </div>
+          </template>
           <template v-if="listType === 'search'" #left-extra>
             <span style="margin-left: 16px; color: #909399;">共找到 {{ total }} 条结果</span>
           </template>
         </MovieListLayout>
+        <SlotMachineDialog v-model="slotDialogVisible" />
       </el-main>
     </el-container>
   </div>
@@ -97,8 +111,9 @@ defineOptions({ name: 'MovieListPage' });
 import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { ArrowDown, ArrowUp } from '@element-plus/icons-vue';
+import { ArrowDown, ArrowUp, QuestionFilled } from '@element-plus/icons-vue';
 import MovieListLayout from '../components/MovieListLayout.vue';
+import SlotMachineDialog from '../components/SlotMachineDialog.vue';
 import ThemeSwitch from '../components/ThemeSwitch.vue';
 import { useListParamsStore } from '../stores/listParamsStore';
 import { useScanStore } from '../stores/scanStore';
@@ -171,6 +186,11 @@ const showPagination = computed(() => {
 });
 
 const currentPage = ref(1);
+const slotDialogVisible = ref(false);
+
+function openSlotDialog() {
+  slotDialogVisible.value = true;
+}
 
 // 顶部筛选器状态
 const filterGroupList = filterGroups;
@@ -642,5 +662,42 @@ onBeforeUnmount(() => {
 .filter-collapse-button {
   font-size: 12px;
   padding: 4px 12px;
+}
+
+/* 抽奖入口：上下结构，小窗时不被压缩 */
+.lottery-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-right: 12px;
+  flex-shrink: 0;
+}
+.lottery-hint-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.lottery-hint {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+}
+.lottery-hint-icon-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--el-fill-color);
+  color: var(--el-text-color-secondary);
+  cursor: help;
+}
+.lottery-hint-icon-wrap .el-icon {
+  font-size: 12px;
+}
+.lottery-btn {
+  width: 60%;
 }
 </style>

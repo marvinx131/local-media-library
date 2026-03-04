@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 影片相关
   movies: {
     getList: (params) => ipcRenderer.invoke('movies:getList', params),
+    getRandomList: (params) => ipcRenderer.invoke('movies:getRandomList', params),
     getById: (id) => ipcRenderer.invoke('movies:getById', id),
     create: (data) => ipcRenderer.invoke('movies:create', data),
     update: (id, data) => ipcRenderer.invoke('movies:update', id, data),
