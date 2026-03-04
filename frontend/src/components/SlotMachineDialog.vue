@@ -192,13 +192,19 @@ function onSlotEnd() {
 }
 
 function goToDetail(movie) {
-  if (movie?.id) {
-    router.push(`/movie/${movie.id}`);
-  }
+  if (!movie?.id) return;
+  unlockBodyScroll();
+  router.push(`/movie/${movie.id}`);
 }
 
 function playAgain() {
   fetchRandom();
+}
+
+function unlockBodyScroll() {
+  if (typeof document === 'undefined') return;
+  document.body.style.width = '';
+  document.body.classList.remove('el-popup-parent--hidden');
 }
 
 function onDialogClosed() {
@@ -209,6 +215,7 @@ function onDialogClosed() {
   slotMovies.value = [];
   posterUrls.value = {};
   hasStopped.value = false;
+  unlockBodyScroll();
 }
 
 watch(

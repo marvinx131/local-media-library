@@ -9,6 +9,7 @@ const path = require('path');
 const fs = require('fs-extra');
 const Store = require('electron-store');
 const scanState = require('../state/scanState');
+const favoritesService = require('../services/favoritesService');
 
 // 存储主窗口引用，用于动态获取
 let mainWindowRef = null;
@@ -226,6 +227,112 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     } catch (error) {
       console.error('播放视频失败:', error);
       return { success: false, message: error.message };
+    }
+  });
+
+  // 收藏夹 IPC（按识别码 code 存储，扫描时不清空）
+  ipcMain.handle('favorites:getFolders', () => {
+    return { success: true, data: favoritesService.getFolders() };
+  });
+  ipcMain.handle('favorites:createFolder', (event, name) => {
+    const id = favoritesService.createFolder(name);
+    return { success: true, data: id };
+  });
+  ipcMain.handle('favorites:updateFolder', (event, id, name) => {
+    const ok = favoritesService.updateFolder(id, name);
+    return { success: ok };
+  });
+  ipcMain.handle('favorites:deleteFolder', (event, id) => {
+    const ok = favoritesService.deleteFolder(id);
+    return { success: ok };
+  });
+  ipcMain.handle('favorites:getFoldersContainingMovie', (event, movieCode) => {
+    const ids = favoritesService.getFoldersContainingMovie(movieCode);
+    return { success: true, data: ids };
+  });
+  ipcMain.handle('favorites:setMovieFolders', async (event, movieCode, folderIds) => {
+    try {
+      favoritesService.setMovieFolders(movieCode, folderIds);
+      return { success: true };
+    } catch (e) {
+      console.error('favorites:setMovieFolders 失败:', e);
+      return { success: false, message: e?.message || String(e) };
+    }
+  });
+  ipcMain.handle('favorites:getMoviesByFolder', async (event, folderId, options = {}) => {
+    try {
+      const sequelize = getSequelize();
+      if (!sequelize || !sequelize.models?.Movie) {
+        return { success: false, message: '数据库未初始化', data: [], total: 0 };
+      }
+      const codes = favoritesService.getCodesByFolder(folderId);
+      if (codes.length === 0) {
+        return { success: true, data: [], total: 0 };
+      }
+      const { page = 1, pageSize = 20, sortBy = 'premiered-desc' } = options;
+      const Movie = sequelize.models.Movie;
+      const filterPlayable = settingsStore.get('filterPlayable', false);
+      const where = { code: { [Op.in]: codes } };
+      if (filterPlayable) where.playable = true;
+      const include = [
+        { model: sequelize.models.Actor, through: { attributes: [] }, attributes: ['id', 'name'] },
+        { model: sequelize.models.Genre, through: { attributes: [] }, attributes: ['id', 'name'] },
+        { model: sequelize.models.Studio, attributes: ['id', 'name'], required: false }
+      ];
+      let rows;
+      let total = codes.length;
+      if (sortBy === 'addedAt-desc') {
+        const codesPage = codes.slice((page - 1) * pageSize, page * pageSize);
+        if (codesPage.length === 0) {
+          return { success: true, data: [], total };
+        }
+        const wherePage = { code: { [Op.in]: codesPage } };
+        if (filterPlayable) wherePage.playable = true;
+        const found = await Movie.findAll({
+          where: wherePage,
+          include,
+          distinct: true
+        });
+        rows = codesPage.map(code => found.find(m => m.code === code)).filter(Boolean);
+      } else {
+        const order = getOrderFromSortBy(sortBy);
+        const { count, rows: r } = await Movie.findAndCountAll({
+          where,
+          include,
+          order,
+          limit: pageSize,
+          offset: (page - 1) * pageSize,
+          distinct: true
+        });
+        total = count;
+        rows = r;
+      }
+      const moviesData = rows.map(movie => ({
+        id: movie.id,
+        title: movie.title,
+        code: movie.code,
+        runtime: movie.runtime,
+        premiered: movie.premiered,
+        director: movie.director,
+        studio_id: movie.studio_id,
+        poster_path: movie.poster_path,
+        fanart_path: movie.fanart_path,
+        nfo_path: movie.nfo_path,
+        folder_path: movie.folder_path,
+        playable: movie.playable,
+        video_path: movie.video_path,
+        data_path_index: movie.data_path_index || 0,
+        folder_updated_at: movie.folder_updated_at,
+        created_at: movie.created_at,
+        updated_at: movie.updated_at,
+        actors: movie.Actors?.map(a => ({ id: a.id, name: a.name })) || [],
+        genres: movie.Genres?.map(g => ({ id: g.id, name: g.name })) || [],
+        studio: movie.Studio ? { id: movie.Studio.id, name: movie.Studio.name } : null
+      }));
+      return { success: true, data: moviesData, total };
+    } catch (err) {
+      console.error('favorites:getMoviesByFolder', err);
+      return { success: false, message: err.message, data: [], total: 0 };
     }
   });
 

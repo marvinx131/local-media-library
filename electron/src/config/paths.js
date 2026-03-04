@@ -2,10 +2,11 @@ const Store = require('electron-store');
 const { dialog } = require('electron');
 const fs = require('fs-extra');
 const path = require('path');
+const { getAppDataRoot } = require('./appDataRoot');
 
-// 在开发环境中使用不同的配置名称，避免与生产环境共享数据
 const store = new Store({
-  name: process.env.NODE_ENV === 'development' ? 'javlibrary-dev' : 'javlibrary'
+  name: process.env.NODE_ENV === 'development' ? 'javlibrary-dev' : 'javlibrary',
+  cwd: getAppDataRoot()
 });
 
 /**

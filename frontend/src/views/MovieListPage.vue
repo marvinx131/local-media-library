@@ -11,7 +11,7 @@
         </div>
       </el-header>
       <el-main ref="mainContentRef" class="page-theme-bg">
-        <div class="filter-bar" v-if="filterGroupList && filterGroupList.length">
+        <div class="filter-bar" v-if="listType !== 'favorite' && filterGroupList && filterGroupList.length">
           <div
             v-for="group in visibleFilterGroups"
             :key="group.key"
@@ -81,7 +81,11 @@
           @update:sortBy="handleSortByChange"
           @update:viewMode="handleViewModeChange"
           @rowClick="goToMovieDetail"
+          @playVideo="onPlayVideo"
+          @toggleFavorite="onToggleFavorite"
           :load-movie-image="movie => loadMovieImage(movie.poster_path, movie.data_path_index)"
+          :show-favorite-heart="true"
+          :favorite-folder-ids-by-code="favoriteFolderIdsByCode"
         >
           <template #before-view-mode>
             <div class="lottery-entry">
@@ -101,6 +105,11 @@
           </template>
         </MovieListLayout>
         <SlotMachineDialog v-model="slotDialogVisible" />
+        <FavoriteFoldersDialog
+          v-model="favoriteDialogVisible"
+          :movie="favoriteDialogMovie"
+          @done="onFavoriteDialogDone"
+        />
       </el-main>
     </el-container>
   </div>
@@ -114,6 +123,7 @@ import { ElMessage } from 'element-plus';
 import { ArrowDown, ArrowUp, QuestionFilled } from '@element-plus/icons-vue';
 import MovieListLayout from '../components/MovieListLayout.vue';
 import SlotMachineDialog from '../components/SlotMachineDialog.vue';
+import FavoriteFoldersDialog from '../components/FavoriteFoldersDialog.vue';
 import ThemeSwitch from '../components/ThemeSwitch.vue';
 import { useListParamsStore } from '../stores/listParamsStore';
 import { useScanStore } from '../stores/scanStore';
@@ -144,6 +154,7 @@ const listType = computed(() => {
   if (path.startsWith('/studio/')) return 'studio';
   if (path.startsWith('/series/')) return 'series';
   if (path === '/search/results') return 'search';
+  if (path.startsWith('/favorite/')) return 'favorite';
   return 'home';
 });
 
@@ -156,6 +167,7 @@ const pageKey = computed(() => {
     case 'studio': return 'studio_' + (route.params.id ?? '');
     case 'series': return 'series_' + (route.params.prefix ?? '');
     case 'search': return 'search';
+    case 'favorite': return 'favorite_' + (route.params.id ?? '');
     default: return 'home';
   }
 });
@@ -169,6 +181,7 @@ const headerTitle = computed(() => {
     case 'studio': return studioName.value || '制作商详情';
     case 'series': return '系列：' + (route.params.prefix ?? '');
     case 'search': return '搜索结果';
+    case 'favorite': return favoriteFolderName.value || '收藏夹';
     default: return '影片列表';
   }
 });
@@ -177,6 +190,10 @@ const actorName = ref('');
 const genreName = ref('');
 const directorName = ref('');
 const studioName = ref('');
+const favoriteFolderName = ref('');
+const favoriteFolderIdsByCode = ref({});
+const favoriteDialogVisible = ref(false);
+const favoriteDialogMovie = ref(null);
 const viewModeFromQuery = computed(() => route.query.viewMode || (typeof route.params.id === 'string' && isNaN(parseInt(route.params.id)) ? 'folder' : 'actor'));
 
 const emptyText = computed(() => (listType.value === 'search' ? '未找到匹配的影片' : '暂无影片数据'));
@@ -360,6 +377,23 @@ const loadDataRaw = async () => {
         result = await window.electronAPI.movies.getSeries(prefix, { page, pageSize, sortBy, filterGenres, filterYears });
         break;
       }
+      case 'favorite': {
+        const folderId = route.params.id;
+        if (!folderId) {
+          ElMessage.error('无效的收藏夹');
+          loading.value = false;
+          return;
+        }
+        result = await window.electronAPI.favorites.getMoviesByFolder(folderId, { page, pageSize, sortBy });
+        if (result.success) {
+          const foldersRes = await window.electronAPI.favorites.getFolders();
+          if (foldersRes?.success && Array.isArray(foldersRes.data)) {
+            const folder = foldersRes.data.find(f => f.id === folderId);
+            favoriteFolderName.value = folder?.name || '收藏夹';
+          }
+        }
+        break;
+      }
       case 'search': {
         const q = route.query;
         if (q.type === 'simple') {
@@ -416,6 +450,20 @@ const loadDataRaw = async () => {
   loadImagesBatch(movies.value, imageCache.value, 20);
   lastRefreshedDataVersion.value = scanStore.dataVersion;
   loading.value = false;
+
+  if (movies.value.length > 0) {
+    const map = {};
+    await Promise.all(
+      movies.value.map(async (m) => {
+        if (!m?.code) return;
+        try {
+          const res = await window.electronAPI.favorites.getFoldersContainingMovie(m.code);
+          if (res?.success && Array.isArray(res.data)) map[m.code] = res.data;
+        } catch (_) {}
+      })
+    );
+    favoriteFolderIdsByCode.value = { ...favoriteFolderIdsByCode.value, ...map };
+  }
 };
 
 const loadData = withLoadingOptimization(loadDataRaw);
@@ -467,6 +515,41 @@ function goToMovieDetail(movieId) {
   router.push({ path: `/movie/${id}` });
 }
 
+async function onPlayVideo(movie) {
+  if (!movie?.id) return;
+  try {
+    pauseBackgroundLoading();
+    ElMessage.info('正在打开播放器...');
+    const result = await window.electronAPI.movie.playVideo(movie.id);
+    if (result?.success) ElMessage.success('已使用系统默认播放器打开视频');
+    else ElMessage.error(result?.message || '播放失败');
+  } catch (e) {
+    ElMessage.error('播放失败: ' + (e?.message || ''));
+  } finally {
+    resumeBackgroundLoading();
+  }
+}
+
+function onToggleFavorite(movie) {
+  favoriteDialogMovie.value = movie;
+  favoriteDialogVisible.value = true;
+}
+
+async function onFavoriteDialogDone() {
+  const movie = favoriteDialogMovie.value;
+  if (movie?.code) {
+    try {
+      const res = await window.electronAPI.favorites.getFoldersContainingMovie(movie.code);
+      if (res?.success && Array.isArray(res.data)) {
+        favoriteFolderIdsByCode.value = {
+          ...favoriteFolderIdsByCode.value,
+          [movie.code]: res.data
+        };
+      }
+    } catch (_) {}
+  }
+}
+
 function goBack() {
   if (window.history.length > 1) {
     router.back();
@@ -475,6 +558,7 @@ function goBack() {
     else if (listType.value === 'genre') router.push('/genres');
     else if (listType.value === 'director') router.push('/directors');
     else if (listType.value === 'studio') router.push('/studios');
+    else if (listType.value === 'favorite') router.push('/favorites');
     else if (listType.value === 'series' || listType.value === 'search') router.push('/');
     else router.push('/');
   }
