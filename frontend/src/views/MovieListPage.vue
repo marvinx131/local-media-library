@@ -130,11 +130,13 @@ import { useScanStore } from '../stores/scanStore';
 import { savePageState, getPageState, saveScrollPosition, restoreScrollPosition, clearScrollPosition } from '../utils/pageState';
 import { loadImagesBatch, pauseBackgroundLoading, resumeBackgroundLoading, loadImage } from '../utils/imageLoader';
 import { withLoadingOptimization } from '../utils/loadingOptimizer';
-import { filterGroups } from '../config/genres';
+import { buildFilterGroups } from '../config/genres';
+import { useGenreCategoriesStore } from '../stores/genreCategoriesStore';
 
 const router = useRouter();
 const route = useRoute();
 const listParams = useListParamsStore();
+const genreStore = useGenreCategoriesStore();
 const scanStore = useScanStore();
 const lastRefreshedDataVersion = ref(0);
 const lastScrollTop = ref(0);
@@ -210,7 +212,7 @@ function openSlotDialog() {
 }
 
 // 顶部筛选器状态
-const filterGroupList = filterGroups;
+const filterGroupList = ref([]);
 const selectedValues = ref({});
 const expandedGroups = ref({});
 const groupTagHeights = ref({});
@@ -219,7 +221,7 @@ const filterCollapsed = ref(true);
 function initFilterState() {
   const state = {};
   const expanded = {};
-  filterGroupList.forEach(group => {
+  filterGroupList.value.forEach(group => {
     const opts = group.options || [];
     const hasAll = opts.find(o => o.value === 'all');
     state[group.key] = hasAll ? ['all'] : [];
@@ -229,16 +231,28 @@ function initFilterState() {
   expandedGroups.value = expanded;
 }
 
-initFilterState();
+watch(
+  () => genreStore.categories,
+  (cats) => {
+    filterGroupList.value = buildFilterGroups(cats);
+    initFilterState();
+  },
+  { deep: true, immediate: true }
+);
+
+onMounted(() => {
+  // 确保应用启动或刷新后，先加载分类配置，再驱动顶部筛选器分组
+  genreStore.load();
+});
 
 const visibleFilterGroups = computed(() => {
-  if (!filterCollapsed.value) return filterGroupList;
-  return filterGroupList.filter(g => g.type === 'type' || g.type === 'year');
+  if (!filterCollapsed.value) return filterGroupList.value;
+  return filterGroupList.value.filter(g => g.type === 'type' || g.type === 'year');
 });
 
 const selectedGenreNames = computed(() => {
   const result = new Set();
-  filterGroupList.forEach(group => {
+  filterGroupList.value.forEach(group => {
     if (group.type !== 'genre') return;
     const values = selectedValues.value[group.key] || [];
     const hasReal = values.some(v => v !== 'all');
@@ -253,7 +267,7 @@ const selectedGenreNames = computed(() => {
 });
 
 const selectedYears = computed(() => {
-  const yearGroup = filterGroupList.find(g => g.type === 'year');
+  const yearGroup = filterGroupList.value.find(g => g.type === 'year');
   if (!yearGroup) return [];
   const values = selectedValues.value[yearGroup.key] || [];
   const hasReal = values.some(v => v !== 'all');

@@ -111,5 +111,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getFoldersContainingMovie: (movieCode) => ipcRenderer.invoke('favorites:getFoldersContainingMovie', movieCode),
     setMovieFolders: (movieCode, folderIds) => ipcRenderer.invoke('favorites:setMovieFolders', movieCode, folderIds),
     getMoviesByFolder: (folderId, options) => ipcRenderer.invoke('favorites:getMoviesByFolder', folderId, options)
+  },
+
+  // 分类配置（按大类 + 小类保存在 AppData）
+  genreCategories: {
+    get: () => ipcRenderer.invoke('genreCategories:get'),
+    save: (categories) => ipcRenderer.invoke('genreCategories:save', categories)
   }
 });

@@ -10,6 +10,7 @@ const fs = require('fs-extra');
 const Store = require('electron-store');
 const scanState = require('../state/scanState');
 const favoritesService = require('../services/favoritesService');
+const genreCategoriesService = require('../services/genreCategoriesService');
 
 // 存储主窗口引用，用于动态获取
 let mainWindowRef = null;
@@ -233,6 +234,26 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
   // 收藏夹 IPC（按识别码 code 存储，扫描时不清空）
   ipcMain.handle('favorites:getFolders', () => {
     return { success: true, data: favoritesService.getFolders() };
+  });
+
+  // 分类配置 IPC（按大类 + 小类保存到 AppData）
+  ipcMain.handle('genreCategories:get', () => {
+    try {
+      const categories = genreCategoriesService.getCategories();
+      return { success: true, data: categories };
+    } catch (error) {
+      console.error('获取分类配置失败:', error);
+      return { success: false, message: error.message, data: [] };
+    }
+  });
+  ipcMain.handle('genreCategories:save', (event, categories) => {
+    try {
+      genreCategoriesService.saveCategories(categories || []);
+      return { success: true };
+    } catch (error) {
+      console.error('保存分类配置失败:', error);
+      return { success: false, message: error.message };
+    }
   });
   ipcMain.handle('favorites:createFolder', (event, name) => {
     const id = favoritesService.createFolder(name);
