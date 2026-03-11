@@ -11,6 +11,7 @@ const Store = require('electron-store');
 const scanState = require('../state/scanState');
 const favoritesService = require('../services/favoritesService');
 const genreCategoriesService = require('../services/genreCategoriesService');
+const actorAvatarService = require('../services/actorAvatarService');
 
 // 存储主窗口引用，用于动态获取
 let mainWindowRef = null;
@@ -157,6 +158,89 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     settingsStore.set('autoScanOnStartup', !!value);
     return { success: true };
   });
+
+  ipcMain.handle('settings:getActorDataPath', () => {
+    return settingsStore.get('actorDataPath', null);
+  });
+
+  ipcMain.handle('settings:clearActorDataPath', () => {
+    settingsStore.delete('actorDataPath');
+    return { success: true };
+  });
+
+  ipcMain.handle('settings:setActorDataPath', async () => {
+    try {
+      const win = mainWindowRef || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+      if (!win) return { success: false, message: '无法打开对话框：窗口未创建' };
+      const result = await dialog.showOpenDialog(win, {
+        properties: ['openDirectory'],
+        title: '请选择演员数据文件夹（需包含 Filetree.json 与 Content 目录）'
+      });
+      if (result.canceled || !result.filePaths.length) return { success: false, message: '已取消' };
+      const rootPath = result.filePaths[0];
+      const filetreePath = path.join(rootPath, 'Filetree.json');
+      const contentDir = path.join(rootPath, 'Content');
+      if (!(await fs.pathExists(filetreePath))) {
+        return { success: false, message: '该路径下未找到 Filetree.json' };
+      }
+      if (!(await fs.pathExists(contentDir))) {
+        return { success: false, message: '该路径下未找到 Content 目录' };
+      }
+      settingsStore.set('actorDataPath', rootPath);
+      return { success: true, path: rootPath };
+    } catch (e) {
+      return { success: false, message: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle('system:scanActors', async () => {
+    try {
+      const actorDataPath = settingsStore.get('actorDataPath', null);
+      if (!actorDataPath) return { success: false, message: '请先在设置中配置演员数据路径' };
+      const result = await actorAvatarService.scanFromActorDataPath(actorDataPath);
+      return result;
+    } catch (e) {
+      return { success: false, message: e.message || String(e) };
+    }
+  });
+
+  ipcMain.handle('actorAvatars:getSummaryByName', (event, actorName) => {
+    try {
+      const actorDataPath = settingsStore.get('actorDataPath', null);
+      const summary = actorAvatarService.getActorAvatarSummary(actorName, actorDataPath);
+      return { success: true, data: summary };
+    } catch (e) {
+      return { success: false, message: e.message || String(e), data: null };
+    }
+  });
+
+  ipcMain.handle('actorAvatars:getCandidatesByName', (event, actorName) => {
+    try {
+      const actorDataPath = settingsStore.get('actorDataPath', null);
+      const data = actorAvatarService.getActorAvatarCandidates(actorName, actorDataPath);
+      return { success: true, data };
+    } catch (e) {
+      return { success: false, message: e.message || String(e), data: { candidates: [], selectedId: null } };
+    }
+  });
+
+  ipcMain.handle('actorAvatars:setSelectionByName', (event, actorName, selectedId) => {
+    try {
+      const ok = actorAvatarService.setActorAvatarSelection(actorName, selectedId);
+      return { success: ok };
+    } catch (e) {
+      return { success: false, message: e.message || String(e) };
+    }
+  });
+
+  function getActorDataPath() {
+    return settingsStore.get('actorDataPath', null);
+  }
+
+  function attachAvatarToActor(actorName) {
+    const actorDataPath = getActorDataPath();
+    return actorAvatarService.getActorAvatarSummary(actorName, actorDataPath);
+  }
 
   ipcMain.handle('system:getScanStatus', () => {
     return { inProgress: scanState.getScanInProgress(), type: scanState.getCurrentScanType() };
@@ -636,9 +720,13 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         updated_at: movie.updated_at
       };
       
-      // 处理关联数据 - 所有演员数据均来自NFO，都在数据库中
+      // 处理关联数据 - 所有演员数据均来自NFO，都在数据库中；附带演员头像摘要（若已配置演员数据路径）
       const dbActors = movie.ActorsFromNfo && Array.isArray(movie.ActorsFromNfo) 
-        ? movie.ActorsFromNfo.map(actor => ({ id: actor.id, name: actor.name, inDatabase: true }))
+        ? movie.ActorsFromNfo.map(actor => {
+            const base = { id: actor.id, name: actor.name, inDatabase: true };
+            base.avatar = attachAvatarToActor(actor.name);
+            return base;
+          })
         : [];
       
       movieData.actors = dbActors;
@@ -1312,8 +1400,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
           const movies = actor.Movies || [];
           const totalCount = movies.length;
           const playableCount = movies.filter(m => m.playable === true || m.playable === 1).length;
-          
-          return {
+          const item = {
             id: actor.id,
             name: actor.name,
             totalCount,
@@ -1322,6 +1409,8 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
             created_at: actor.created_at,
             updated_at: actor.updated_at
           };
+          item.avatar = attachAvatarToActor(actor.name);
+          return item;
         });
         
         console.log(`actors:getList 女优目录模式查询到 ${actorsData.length} 条记录`);
@@ -1379,6 +1468,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
           created_at: actor.created_at,
           updated_at: actor.updated_at
         };
+        actorData.avatar = attachAvatarToActor(actor.name);
       }
       
       return { success: true, data: actorData };
@@ -1437,6 +1527,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
           name: folderName,
           viewMode: 'folder'
         };
+        actorData.avatar = attachAvatarToActor(folderName);
         
         console.log('文件目录模式查询 - 文件夹名:', folderName, '查询条件:', JSON.stringify(where));
         
@@ -1510,6 +1601,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
           created_at: actor.created_at,
           updated_at: actor.updated_at
         };
+        actorData.avatar = attachAvatarToActor(actor.name);
         
         if (filterPlayable) {
           where.playable = true;

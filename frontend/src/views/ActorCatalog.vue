@@ -27,7 +27,7 @@
           <div v-else-if="actors.length === 0" class="empty-state">
             <el-empty :description="getEmptyDescription()" />
           </div>
-          <div v-else class="actors-grid">
+          <div v-else class="actors-grid" :class="`grid-${gridSize}`">
               <el-card
                 v-for="item in filteredItems"
                 :key="item.id"
@@ -35,15 +35,42 @@
                 shadow="hover"
                 @click="goToDetail(item)"
               >
-                <div class="actor-info">
-                  <div class="actor-name">{{ item.name }}</div>
-                  <div class="actor-meta">
-                    (<span :class="{ 'playable-count': item.playableCount > 0 }">{{ item.playableCount }}</span>/{{ item.totalCount }})
+                <div class="actor-card-inner">
+                  <div class="actor-info">
+                    <template v-if="catalogType.type === 'actor' && catalogType.mode === 'actor' && item.avatar?.hasAvatar">
+                      <div class="actor-avatar-wrap">
+                        <el-image
+                          :src="item.avatar.url"
+                          fit="cover"
+                          class="actor-avatar-image"
+                        >
+                          <template #error>
+                            <div class="actor-avatar-slot">加载失败</div>
+                          </template>
+                        </el-image>
+                      </div>
+                    </template>
+                    <div class="actor-name">{{ item.name }}</div>
+                    <div class="actor-meta">
+                      (<span :class="{ 'playable-count': item.playableCount > 0 }">{{ item.playableCount }}</span>/{{ item.totalCount }})
+                    </div>
                   </div>
+                  <el-icon
+                    v-if="catalogType.type === 'actor' && catalogType.mode === 'actor' && item.avatar?.hasMultiple"
+                    class="actor-card-edit-icon"
+                    @click.stop="openAvatarPicker(item.name)"
+                  >
+                    <Edit />
+                  </el-icon>
                 </div>
               </el-card>
           </div>
         </el-card>
+        <ActorAvatarPickerDialog
+          v-model="avatarPickerVisible"
+          :actor-name="avatarPickerActorName"
+          @done="onAvatarPickerDone"
+        />
       </el-main>
     </el-container>
   </div>
@@ -54,8 +81,10 @@ defineOptions({ name: 'ActorCatalog' });
 import { ref, onMounted, onActivated, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
+import { Edit } from '@element-plus/icons-vue';
 import { useScanStore } from '../stores/scanStore';
 import ThemeSwitch from '../components/ThemeSwitch.vue';
+import ActorAvatarPickerDialog from '../components/ActorAvatarPickerDialog.vue';
 
 const router = useRouter();
 const scanStore = useScanStore();
@@ -63,6 +92,9 @@ const lastRefreshedDataVersion = ref(0);
 const loading = ref(true);
 const actors = ref([]);
 const filterPlayable = ref(false);
+const avatarPickerVisible = ref(false);
+const avatarPickerActorName = ref('');
+const gridSize = ref('medium'); // small | medium | large
 
 // 从 localStorage 恢复当前目录类型
 const getInitialCatalog = () => {
@@ -158,6 +190,23 @@ const handleCatalogChange = () => {
   loadCatalog();
 };
 
+function openAvatarPicker(name) {
+  avatarPickerActorName.value = name || '';
+  avatarPickerVisible.value = true;
+}
+
+async function onAvatarPickerDone() {
+  const name = avatarPickerActorName.value;
+  if (!name) return;
+  try {
+    const res = await window.electronAPI?.actorAvatars?.getSummaryByName?.(name);
+    if (res?.success && res?.data) {
+      const item = actors.value.find(a => a.name === name);
+      if (item) item.avatar = res.data;
+    }
+  } catch (_) {}
+}
+
 const goToDetail = (item) => {
   const itemId = typeof item === 'object' ? item.id : item;
   if (!itemId || itemId === 'N/A' || itemId === null || itemId === undefined) {
@@ -226,6 +275,14 @@ onActivated(() => {
 onMounted(() => {
   loadFilterPlayable();
   loadCatalog();
+
+  window.addEventListener('actorAvatarChanged', () => {
+    const { type, mode } = catalogType.value;
+    if (type === 'actor' && mode === 'actor') {
+      loadCatalog();
+    }
+  });
+
   if (window.electronAPI?.system?.onFileChange) {
     window.electronAPI.system.onFileChange((data) => {
       console.log('文件变化:', data);
@@ -295,6 +352,7 @@ onMounted(() => {
 .actor-card {
   cursor: pointer;
   transition: transform 0.2s;
+  position: relative;
 }
 
 .actor-card:hover {
@@ -304,6 +362,51 @@ onMounted(() => {
 .actor-info {
   text-align: center;
   padding: 4px;
+}
+
+.actor-avatar-wrap {
+  position: relative;
+  margin: 0 auto 6px;
+  width: 80px;
+  height: 80px;
+}
+
+.actor-avatar-image {
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  display: block;
+  background: var(--el-fill-color-light);
+}
+
+.actor-avatar-slot {
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+  background: var(--el-fill-color-light);
+}
+
+.actor-card-edit-icon {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 18px;
+  height: 18px;
+  padding: 2px;
+  border-radius: 4px;
+  background: var(--el-bg-color);
+  color: var(--el-color-primary);
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+:deep(.actor-card .el-card__body) {
+  padding: 5px 0;
 }
 
 .actor-name {

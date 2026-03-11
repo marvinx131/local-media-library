@@ -11,6 +11,27 @@
         </div>
       </el-header>
       <el-main ref="mainContentRef" class="page-theme-bg">
+        <div v-if="listType === 'actor' && actorAvatar?.hasAvatar" class="actor-header-block">
+          <div class="actor-avatar-wrap" @click="openAvatarPreview">
+            <el-image
+              :src="actorAvatar.url"
+              fit="cover"
+              class="actor-avatar-image"
+            >
+              <template #error>
+                <div class="actor-avatar-slot">头像加载失败</div>
+              </template>
+            </el-image>
+            <el-icon
+              v-if="actorAvatar.hasMultiple"
+              class="actor-avatar-edit-icon"
+              @click.stop="openAvatarPicker(actorName)"
+            >
+              <Edit />
+            </el-icon>
+          </div>
+          <div class="actor-header-name">{{ actorName }}</div>
+        </div>
         <div class="filter-bar" v-if="listType !== 'favorite' && filterGroupList && filterGroupList.length">
           <div
             v-for="group in visibleFilterGroups"
@@ -111,6 +132,55 @@
           :movie="favoriteDialogMovie"
           @done="onFavoriteDialogDone"
         />
+        <ActorAvatarPickerDialog
+          v-model="avatarPickerVisible"
+          :actor-name="avatarPickerActorName"
+          @done="onAvatarPickerDone"
+        />
+        <Teleport to="body">
+          <div
+            v-show="avatarPreviewVisible"
+            class="avatar-preview-mask"
+            @click.self="closeAvatarPreview"
+          >
+            <img
+              v-if="avatarPreviewUrls.length"
+              class="avatar-preview-img"
+              :src="avatarPreviewUrls[avatarPreviewIndex] || ''"
+              alt=""
+              @click.stop
+            />
+            <div class="avatar-preview-pagination">
+              {{ avatarPreviewIndex + 1 }}/{{ avatarPreviewUrls.length }}
+            </div>
+            <button
+              v-if="avatarPreviewUrls.length > 1"
+              type="button"
+              class="avatar-preview-btn avatar-preview-prev"
+              aria-label="上一张"
+              @click.stop="prevAvatarPreview"
+            >
+              ‹
+            </button>
+            <button
+              v-if="avatarPreviewUrls.length > 1"
+              type="button"
+              class="avatar-preview-btn avatar-preview-next"
+              aria-label="下一张"
+              @click.stop="nextAvatarPreview"
+            >
+              ›
+            </button>
+            <button
+              type="button"
+              class="avatar-preview-close"
+              aria-label="关闭"
+              @click.stop="closeAvatarPreview"
+            >
+              ×
+            </button>
+          </div>
+        </Teleport>
       </el-main>
     </el-container>
   </div>
@@ -121,8 +191,9 @@ defineOptions({ name: 'MovieListPage' });
 import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { ArrowDown, ArrowUp, QuestionFilled } from '@element-plus/icons-vue';
+import { ArrowDown, ArrowUp, QuestionFilled, Edit } from '@element-plus/icons-vue';
 import MovieListLayout from '../components/MovieListLayout.vue';
+import ActorAvatarPickerDialog from '../components/ActorAvatarPickerDialog.vue';
 import SlotMachineDialog from '../components/SlotMachineDialog.vue';
 import FavoriteFoldersDialog from '../components/FavoriteFoldersDialog.vue';
 import ThemeSwitch from '../components/ThemeSwitch.vue';
@@ -190,6 +261,10 @@ const headerTitle = computed(() => {
 });
 
 const actorName = ref('');
+const actorAvatar = ref(null);
+const avatarPreviewVisible = ref(false);
+const avatarPreviewUrls = ref([]);
+const avatarPreviewIndex = ref(0);
 const genreName = ref('');
 const directorName = ref('');
 const studioName = ref('');
@@ -197,6 +272,8 @@ const favoriteFolderName = ref('');
 const favoriteFolderIdsByCode = ref({});
 const favoriteDialogVisible = ref(false);
 const favoriteDialogMovie = ref(null);
+const avatarPickerVisible = ref(false);
+const avatarPickerActorName = ref('');
 const viewModeFromQuery = computed(() => route.query.viewMode || (typeof route.params.id === 'string' && isNaN(parseInt(route.params.id)) ? 'folder' : 'actor'));
 
 const emptyText = computed(() => (listType.value === 'search' ? '未找到匹配的影片' : '暂无影片数据'));
@@ -211,6 +288,57 @@ const routeVersion = ref(0);
 
 function openSlotDialog() {
   slotDialogVisible.value = true;
+}
+
+function openAvatarPicker(name) {
+  avatarPickerActorName.value = name || actorName.value || '';
+  avatarPickerVisible.value = true;
+}
+
+async function onAvatarPickerDone() {
+  if (!actorName.value || listType.value !== 'actor') return;
+  try {
+    const res = await window.electronAPI?.actorAvatars?.getSummaryByName?.(actorName.value);
+    if (res?.success && res?.data) {
+      actorAvatar.value = res.data;
+      window.dispatchEvent(new CustomEvent('actorAvatarChanged', { detail: { name: actorName.value } }));
+    }
+  } catch (_) {}
+}
+
+async function openAvatarPreview() {
+  if (!actorName.value) return;
+  try {
+    const res = await window.electronAPI?.actorAvatars?.getCandidatesByName?.(actorName.value);
+    const list = (res?.success && Array.isArray(res.data?.candidates)) ? res.data.candidates : [];
+    const urls = list.map(c => c.url).filter(Boolean);
+    if (!urls.length && actorAvatar.value?.url) {
+      avatarPreviewUrls.value = [actorAvatar.value.url];
+    } else {
+      avatarPreviewUrls.value = urls;
+    }
+    avatarPreviewIndex.value = 0;
+    if (avatarPreviewUrls.value.length) {
+      avatarPreviewVisible.value = true;
+    }
+  } catch (e) {
+    console.error('openAvatarPreview error:', e);
+  }
+}
+
+function closeAvatarPreview() {
+  avatarPreviewVisible.value = false;
+}
+
+function prevAvatarPreview() {
+  if (!avatarPreviewUrls.value.length) return;
+  avatarPreviewIndex.value =
+    (avatarPreviewIndex.value - 1 + avatarPreviewUrls.value.length) % avatarPreviewUrls.value.length;
+}
+
+function nextAvatarPreview() {
+  if (!avatarPreviewUrls.value.length) return;
+  avatarPreviewIndex.value = (avatarPreviewIndex.value + 1) % avatarPreviewUrls.value.length;
 }
 
 // 顶部筛选器状态
@@ -341,6 +469,7 @@ const loadDataRaw = async () => {
   let result = { success: false, data: [], total: 0 };
 
   try {
+    if (listType.value !== 'actor') actorAvatar.value = null;
     switch (listType.value) {
       case 'home': {
         result = await window.electronAPI.movies.getList({ page, pageSize, sortBy, filterGenres, filterYears });
@@ -354,14 +483,19 @@ const loadDataRaw = async () => {
           return;
         }
         result = await window.electronAPI.actors.getMovies(id, { page, pageSize, sortBy, viewMode: viewModeFromQuery.value, filterGenres, filterYears });
-        if (result.success && result.actor?.name) actorName.value = result.actor.name;
-        else if (viewModeFromQuery.value === 'folder' && id) actorName.value = String(id);
-        else if (result.success && viewModeFromQuery.value === 'actor' && !isNaN(id)) {
-          try {
-            const ar = await window.electronAPI.actors.getById(id, { viewMode: viewModeFromQuery.value });
-            if (ar?.success && ar?.data?.name) actorName.value = ar.data.name;
-            else actorName.value = '演员 ' + id;
-          } catch (_) { actorName.value = '演员 ' + id; }
+        if (result.success && result.actor?.name) {
+          actorName.value = result.actor.name;
+          actorAvatar.value = result.actor.avatar || null;
+        } else {
+          actorAvatar.value = null;
+          if (viewModeFromQuery.value === 'folder' && id) actorName.value = String(id);
+          else if (result.success && viewModeFromQuery.value === 'actor' && !isNaN(id)) {
+            try {
+              const ar = await window.electronAPI.actors.getById(id, { viewMode: viewModeFromQuery.value });
+              if (ar?.success && ar?.data?.name) actorName.value = ar.data.name;
+              else actorName.value = '演员 ' + id;
+            } catch (_) { actorName.value = '演员 ' + id; }
+          }
         }
         break;
       }
@@ -698,6 +832,118 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   padding: 0 20px;
+}
+
+/* 演员列表页：标题与筛选器之间的头像+名称（仅当已配置演员数据路径且有头像时显示） */
+.actor-header-block {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 16px 8px;
+}
+.actor-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.actor-avatar-image {
+  width: 100px;
+  height: 100px;
+  border-radius: 8px;
+  display: block;
+  background: var(--el-fill-color-light);
+  cursor: pointer;
+}
+.actor-avatar-slot {
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+}
+.actor-avatar-edit-icon {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 22px;
+  height: 22px;
+  padding: 2px;
+  border-radius: 4px;
+  background: var(--el-bg-color);
+  color: var(--el-color-primary);
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+.actor-avatar-edit-icon:hover {
+  background: var(--el-color-primary-light-9);
+}
+.actor-header-name {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--content-title-color, #303133);
+}
+
+.avatar-preview-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3000;
+}
+
+.avatar-preview-img {
+  max-width: 80vw;
+  max-height: 80vh;
+  object-fit: contain;
+}
+
+.avatar-preview-pagination {
+  position: absolute;
+  bottom: 32px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  font-size: 14px;
+}
+
+.avatar-preview-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 48px;
+  border: none;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  cursor: pointer;
+  font-size: 24px;
+}
+
+.avatar-preview-prev {
+  left: 24px;
+}
+
+.avatar-preview-next {
+  right: 24px;
+}
+
+.avatar-preview-close {
+  position: absolute;
+  top: 16px;
+  right: 24px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  cursor: pointer;
+  font-size: 20px;
 }
 
 .filter-bar {

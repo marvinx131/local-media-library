@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 系统相关
   system: {
     scan: () => ipcRenderer.invoke('system:scan'),
+    scanActors: () => ipcRenderer.invoke('system:scanActors'),
     runStartupSync: () => ipcRenderer.invoke('system:runStartupSync'),
     getScanStatus: () => ipcRenderer.invoke('system:getScanStatus'),
     getStats: () => ipcRenderer.invoke('system:getStats'),
@@ -94,7 +95,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getFilterPlayable: () => ipcRenderer.invoke('settings:getFilterPlayable'),
     setFilterPlayable: (value) => ipcRenderer.invoke('settings:setFilterPlayable', value),
     getAutoScanOnStartup: () => ipcRenderer.invoke('settings:getAutoScanOnStartup'),
-    setAutoScanOnStartup: (value) => ipcRenderer.invoke('settings:setAutoScanOnStartup', value)
+    setAutoScanOnStartup: (value) => ipcRenderer.invoke('settings:setAutoScanOnStartup', value),
+    getActorDataPath: () => ipcRenderer.invoke('settings:getActorDataPath'),
+    setActorDataPath: () => ipcRenderer.invoke('settings:setActorDataPath'),
+    clearActorDataPath: () => ipcRenderer.invoke('settings:clearActorDataPath')
   },
   
   // 播放相关
@@ -117,5 +121,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   genreCategories: {
     get: () => ipcRenderer.invoke('genreCategories:get'),
     save: (categories) => ipcRenderer.invoke('genreCategories:save', categories)
+  },
+
+  // 演员头像（来自演员数据路径 Filetree.json + Content，支持简繁体匹配）
+  actorAvatars: {
+    getSummaryByName: (actorName) => ipcRenderer.invoke('actorAvatars:getSummaryByName', actorName),
+    getCandidatesByName: (actorName) => ipcRenderer.invoke('actorAvatars:getCandidatesByName', actorName),
+    setSelectionByName: (actorName, selectedId) => ipcRenderer.invoke('actorAvatars:setSelectionByName', actorName, selectedId)
   }
 });
