@@ -197,17 +197,29 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     try {
       const actorDataPath = settingsStore.get('actorDataPath', null);
       if (!actorDataPath) return { success: false, message: '请先在设置中配置演员数据路径' };
-      const result = await actorAvatarService.scanFromActorDataPath(actorDataPath);
+      const getActorsWithAliases = async () => {
+        const sequelize = getSequelize();
+        if (!sequelize?.models?.ActorFromNfo) return [];
+        const rows = await sequelize.models.ActorFromNfo.findAll({
+          attributes: ['name', 'display_name', 'former_names']
+        });
+        return rows.map(r => ({
+          name: r.name,
+          display_name: r.display_name || null,
+          former_names: r.former_names
+        }));
+      };
+      const result = await actorAvatarService.scanFromActorDataPath(actorDataPath, getActorsWithAliases);
       return result;
     } catch (e) {
       return { success: false, message: e.message || String(e) };
     }
   });
 
-  ipcMain.handle('actorAvatars:getSummaryByName', (event, actorName) => {
+  ipcMain.handle('actorAvatars:getSummaryByName', async (event, actorName) => {
     try {
       const actorDataPath = settingsStore.get('actorDataPath', null);
-      const summary = actorAvatarService.getActorAvatarSummary(actorName, actorDataPath);
+      const summary = await actorAvatarService.getActorAvatarSummaryAsync(actorName, actorDataPath);
       return { success: true, data: summary };
     } catch (e) {
       return { success: false, message: e.message || String(e), data: null };
@@ -1464,6 +1476,8 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         actorData = {
           id: actor.id,
           name: actor.name,
+          display_name: actor.display_name || null,
+          former_names: parseFormerNames(actor.former_names),
           viewMode: 'actor',
           created_at: actor.created_at,
           updated_at: actor.updated_at
@@ -1474,6 +1488,45 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
       return { success: true, data: actorData };
     } catch (error) {
       return { success: false, message: error.message };
+    }
+  });
+
+  function parseFormerNames(raw) {
+    if (raw == null || raw === '') return [];
+    if (typeof raw !== 'string') return Array.isArray(raw) ? raw : [];
+    try {
+      const arr = JSON.parse(raw);
+      return Array.isArray(arr) ? arr.filter(n => typeof n === 'string' && n.trim()) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  ipcMain.handle('actors:updateProfile', async (event, actorId, payload = {}) => {
+    try {
+      const sequelize = getSequelize();
+      if (!sequelize || !sequelize.models?.ActorFromNfo) {
+        return { success: false, message: '数据库未初始化' };
+      }
+      const id = parseInt(actorId, 10);
+      if (isNaN(id)) return { success: false, message: '无效的演员ID' };
+      const ActorFromNfo = sequelize.models.ActorFromNfo;
+      const actor = await ActorFromNfo.findByPk(id);
+      if (!actor) return { success: false, message: '演员不存在' };
+      const updates = {};
+      if (payload.hasOwnProperty('displayName')) {
+        updates.display_name = payload.displayName === '' || payload.displayName == null ? null : String(payload.displayName).trim();
+      }
+      if (payload.hasOwnProperty('formerNames')) {
+        const arr = Array.isArray(payload.formerNames) ? payload.formerNames : [];
+        const list = arr.map(n => (typeof n === 'string' ? n.trim() : '')).filter(Boolean);
+        updates.former_names = list.length ? JSON.stringify(list) : null;
+      }
+      if (Object.keys(updates).length === 0) return { success: true };
+      await actor.update(updates);
+      return { success: true };
+    } catch (e) {
+      return { success: false, message: e?.message || String(e) };
     }
   });
 
@@ -1597,6 +1650,8 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         actorData = {
           id: actor.id,
           name: actor.name,
+          display_name: actor.display_name || null,
+          former_names: parseFormerNames(actor.former_names),
           viewMode: 'actor',
           created_at: actor.created_at,
           updated_at: actor.updated_at

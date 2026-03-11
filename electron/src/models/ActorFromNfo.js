@@ -11,6 +11,14 @@ module.exports = (sequelize) => {
       type: DataTypes.TEXT,
       allowNull: false,
       unique: true
+    },
+    display_name: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    former_names: {
+      type: DataTypes.TEXT,
+      allowNull: true
     }
   }, {
     tableName: 'actors_from_nfo',

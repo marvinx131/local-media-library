@@ -5,6 +5,24 @@
         <div class="header-content">
           <h1 class="header-title">{{ getCurrentCatalogTitle() }}</h1>
           <div class="header-right">
+            <template v-if="catalogType.type === 'actor' && catalogType.mode === 'actor'">
+              <el-button
+                type="default"
+                :icon="ZoomOut"
+                circle
+                class="grid-zoom-btn"
+                title="缩小图片"
+                @click="gridZoomOut"
+              />
+              <el-button
+                type="default"
+                :icon="ZoomIn"
+                circle
+                class="grid-zoom-btn"
+                title="放大图片"
+                @click="gridZoomIn"
+              />
+            </template>
             <el-select
               v-model="currentCatalog"
               style="width: 180px;"
@@ -81,7 +99,7 @@ defineOptions({ name: 'ActorCatalog' });
 import { ref, onMounted, onActivated, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { Edit } from '@element-plus/icons-vue';
+import { Edit, ZoomIn, ZoomOut } from '@element-plus/icons-vue';
 import { useScanStore } from '../stores/scanStore';
 import ThemeSwitch from '../components/ThemeSwitch.vue';
 import ActorAvatarPickerDialog from '../components/ActorAvatarPickerDialog.vue';
@@ -94,7 +112,33 @@ const actors = ref([]);
 const filterPlayable = ref(false);
 const avatarPickerVisible = ref(false);
 const avatarPickerActorName = ref('');
-const gridSize = ref('medium'); // small | medium | large
+const GRID_SIZES = ['small', 'medium', 'large', 'xlarge', 'xxlarge'];
+const GRID_SIZE_KEY = 'javlibrary_actor_grid_size';
+const getInitialGridSize = () => {
+  try {
+    const stored = localStorage.getItem(GRID_SIZE_KEY);
+    return GRID_SIZES.includes(stored) ? stored : 'medium';
+  } catch (_) {
+    return 'medium';
+  }
+};
+const gridSize = ref(getInitialGridSize());
+
+function gridZoomIn() {
+  const i = GRID_SIZES.indexOf(gridSize.value);
+  if (i < GRID_SIZES.length - 1) gridSize.value = GRID_SIZES[i + 1];
+  try {
+    localStorage.setItem(GRID_SIZE_KEY, gridSize.value);
+  } catch (_) {}
+}
+
+function gridZoomOut() {
+  const i = GRID_SIZES.indexOf(gridSize.value);
+  if (i > 0) gridSize.value = GRID_SIZES[i - 1];
+  try {
+    localStorage.setItem(GRID_SIZE_KEY, gridSize.value);
+  } catch (_) {}
+}
 
 // 从 localStorage 恢复当前目录类型
 const getInitialCatalog = () => {
@@ -344,9 +388,23 @@ onMounted(() => {
 
 .actors-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
   gap: 8px;
   padding: 16px 0;
+}
+.actors-grid.grid-small {
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+}
+.actors-grid.grid-medium {
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+}
+.actors-grid.grid-large {
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+}
+.actors-grid.grid-xlarge {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+.actors-grid.grid-xxlarge {
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 }
 
 .actor-card {
@@ -370,6 +428,26 @@ onMounted(() => {
   width: 80px;
   height: 80px;
 }
+.actors-grid.grid-small .actor-avatar-wrap {
+  width: 56px;
+  height: 56px;
+  margin-bottom: 4px;
+}
+.actors-grid.grid-large .actor-avatar-wrap {
+  width: 104px;
+  height: 104px;
+  margin-bottom: 8px;
+}
+.actors-grid.grid-xlarge .actor-avatar-wrap {
+  width: 128px;
+  height: 128px;
+  margin-bottom: 10px;
+}
+.actors-grid.grid-xxlarge .actor-avatar-wrap {
+  width: 160px;
+  height: 160px;
+  margin-bottom: 12px;
+}
 
 .actor-avatar-image {
   width: 80px;
@@ -377,6 +455,26 @@ onMounted(() => {
   border-radius: 8px;
   display: block;
   background: var(--el-fill-color-light);
+}
+.actors-grid.grid-small .actor-avatar-image {
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+}
+.actors-grid.grid-large .actor-avatar-image {
+  width: 104px;
+  height: 104px;
+  border-radius: 10px;
+}
+.actors-grid.grid-xlarge .actor-avatar-image {
+  width: 128px;
+  height: 128px;
+  border-radius: 12px;
+}
+.actors-grid.grid-xxlarge .actor-avatar-image {
+  width: 160px;
+  height: 160px;
+  border-radius: 14px;
 }
 
 .actor-avatar-slot {
@@ -390,13 +488,37 @@ onMounted(() => {
   color: var(--el-text-color-placeholder);
   background: var(--el-fill-color-light);
 }
+.actors-grid.grid-small .actor-avatar-slot {
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  font-size: 10px;
+}
+.actors-grid.grid-large .actor-avatar-slot {
+  width: 104px;
+  height: 104px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+.actors-grid.grid-xlarge .actor-avatar-slot {
+  width: 128px;
+  height: 128px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+.actors-grid.grid-xxlarge .actor-avatar-slot {
+  width: 160px;
+  height: 160px;
+  border-radius: 14px;
+  font-size: 14px;
+}
 
 .actor-card-edit-icon {
   position: absolute;
   bottom: 4px;
   right: 4px;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   padding: 2px;
   border-radius: 4px;
   background: var(--el-bg-color);
@@ -415,11 +537,19 @@ onMounted(() => {
   margin-bottom: 2px;
   color: var(--content-title-color);
 }
+.actors-grid.grid-small .actor-name { font-size: 11px; }
+.actors-grid.grid-large .actor-name { font-size: 13px; }
+.actors-grid.grid-xlarge .actor-name { font-size: 14px; }
+.actors-grid.grid-xxlarge .actor-name { font-size: 15px; }
 
 .actor-meta {
   font-size: 10px;
   color: var(--content-subtitle-color);
 }
+.actors-grid.grid-small .actor-meta { font-size: 9px; }
+.actors-grid.grid-large .actor-meta { font-size: 11px; }
+.actors-grid.grid-xlarge .actor-meta { font-size: 12px; }
+.actors-grid.grid-xxlarge .actor-meta { font-size: 13px; }
 
 .playable-count {
   color: #67c23a;
@@ -432,7 +562,17 @@ onMounted(() => {
   font-weight: normal;
 }
 
-/* 日间头部下拉框：白字、半透明背景；夜间由 Element 暗色主题接管 */
+/* 日间头部：放大/缩小按钮与下拉框统一白字、半透明 */
+[data-theme="light"] .grid-zoom-btn {
+  color: white;
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+[data-theme="light"] .grid-zoom-btn:hover {
+  background-color: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.5);
+  color: white;
+}
 [data-theme="light"] :deep(.catalog-selector) {
   color: white;
 }

@@ -20,7 +20,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   actors: {
     getList: (params) => ipcRenderer.invoke('actors:getList', params),
     getById: (id, params) => ipcRenderer.invoke('actors:getById', id, params),
-    getMovies: (id, params) => ipcRenderer.invoke('actors:getMovies', id, params)
+    getMovies: (id, params) => ipcRenderer.invoke('actors:getMovies', id, params),
+    updateProfile: (actorId, payload) => ipcRenderer.invoke('actors:updateProfile', actorId, payload)
   },
   
   // 分类相关

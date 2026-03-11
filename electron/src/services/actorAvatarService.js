@@ -124,6 +124,51 @@ function getActorAvatarSummary(actorName, actorDataPath) {
 }
 
 /**
+ * 异步版头像摘要：读图不阻塞主进程，用于「确认换头像」后刷新，避免卡顿
+ */
+async function getActorAvatarSummaryAsync(actorName, actorDataPath) {
+  const key = getCanonicalKey(actorName);
+  if (!key || !actorDataPath) {
+    return { hasAvatar: false, hasMultiple: false, relPath: null, url: null };
+  }
+  const map = readMap();
+  const entry = map.byActor[key];
+  if (!entry || !Array.isArray(entry.candidates) || entry.candidates.length === 0) {
+    return { hasAvatar: false, hasMultiple: false, relPath: null, url: null };
+  }
+  const selectedId = entry.selectedId || entry.candidates[0].id;
+  const chosen = entry.candidates.find(c => c.id === selectedId) || entry.candidates[0];
+  const relPath = chosen.id;
+  const absPath = path.join(actorDataPath, relPath);
+  let url = null;
+  try {
+    const exists = await fs.pathExists(absPath);
+    if (exists) {
+      const buf = await fs.readFile(absPath);
+      const ext = path.extname(absPath).toLowerCase();
+      const mime =
+        ext === '.png'
+          ? 'image/png'
+          : ext === '.webp'
+          ? 'image/webp'
+          : ext === '.gif'
+          ? 'image/gif'
+          : 'image/jpeg';
+      url = `data:${mime};base64,${buf.toString('base64')}`;
+    }
+  } catch (e) {
+    console.error('getActorAvatarSummaryAsync 读取头像失败:', e);
+    url = null;
+  }
+  return {
+    hasAvatar: true,
+    hasMultiple: entry.candidates.length > 1,
+    relPath,
+    url
+  };
+}
+
+/**
  * 返回某演员的所有候选头像及当前选中 id（用于弹窗选择）
  */
 function getActorAvatarCandidates(actorName, actorDataPath) {
@@ -177,13 +222,25 @@ function setActorAvatarSelection(actorName, selectedId) {
   return true;
 }
 
+function parseFormerNamesRaw(raw) {
+  if (raw == null || raw === '') return [];
+  if (typeof raw !== 'string') return Array.isArray(raw) ? raw : [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.filter(n => typeof n === 'string' && n.trim()) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
 /**
  * 从演员数据根路径扫描 Filetree.json，更新 actor-avatar-map
- * 匹配规则：Filetree 键（去掉扩展名）与演员名做匹配，支持简繁体（原样、s2t、t2s 任一匹配即视为同一演员并合并候选）
+ * 匹配规则：Filetree 键（去掉扩展名）与演员名做匹配，支持简繁体；若传入 getActorsWithAliases 则曾用名/显示名也参与匹配，合并到 DB 主名
  * @param {string} rootPath - 演员数据根路径（如 F:\javlib\gfriends）
+ * @param {() => Promise<Array<{ name: string, display_name?: string|null, former_names?: string[] }>>>} [getActorsWithAliases] - 可选，返回库中演员及曾用名，用于把 Filetree 中的别名合并到主名
  * @returns {{ success: boolean, message?: string, actorCount?: number, imageCount?: number }}
  */
-async function scanFromActorDataPath(rootPath) {
+async function scanFromActorDataPath(rootPath, getActorsWithAliases = null) {
   const filetreePath = path.join(rootPath, 'Filetree.json');
   const contentDir = path.join(rootPath, 'Content');
   if (!(await fs.pathExists(filetreePath))) {
@@ -208,8 +265,39 @@ async function scanFromActorDataPath(rootPath) {
   const existingMap = readMap();
   const byActor = JSON.parse(JSON.stringify(existingMap.byActor || {}));
 
+  let aliasToCanonical = new Map();
+  if (typeof getActorsWithAliases === 'function') {
+    try {
+      const actors = await getActorsWithAliases();
+      for (const a of actors || []) {
+        const canonical = a && a.name ? String(a.name).trim() : '';
+        if (!canonical) continue;
+        const names = [canonical];
+        if (a.display_name && String(a.display_name).trim()) names.push(String(a.display_name).trim());
+        const former = Array.isArray(a.former_names) ? a.former_names : (a.former_names != null ? parseFormerNamesRaw(a.former_names) : []);
+        former.forEach(n => { if (n && String(n).trim()) names.push(String(n).trim()); });
+        const uniq = [...new Set(names)];
+        for (const n of uniq) {
+          aliasToCanonical.set(n, canonical);
+          aliasToCanonical.set(toTraditional(n), canonical);
+          aliasToCanonical.set(toSimplified(n), canonical);
+        }
+      }
+    } catch (e) {
+      console.warn('scanFromActorDataPath getActorsWithAliases 失败:', e.message);
+    }
+  }
+
   let imageCount = 0;
   const seenIdsByKey = new Map();
+  for (const [k, entry] of Object.entries(byActor)) {
+    if (!entry.candidates || !Array.isArray(entry.candidates)) continue;
+    if (!seenIdsByKey.has(k)) seenIdsByKey.set(k, new Set());
+    const seen = seenIdsByKey.get(k);
+    for (const c of entry.candidates) {
+      if (c && c.id) seen.add(c.id);
+    }
+  }
 
   for (const [groupName, mapping] of Object.entries(Content)) {
     if (!mapping || typeof mapping !== 'object') continue;
@@ -222,16 +310,24 @@ async function scanFromActorDataPath(rootPath) {
       imageCount++;
       const candidate = { id: relPath, group: groupName, srcFile: displayFileName, targetFile };
 
-      const keysToTry = [actorDisplayName, toTraditional(actorDisplayName), toSimplified(actorDisplayName)];
       let mergedKey = null;
-      for (const k of keysToTry) {
-        if (byActor[k]) {
-          mergedKey = k;
-          break;
+      const canonicalFromAlias = aliasToCanonical.get(actorDisplayName) || aliasToCanonical.get(toTraditional(actorDisplayName)) || aliasToCanonical.get(toSimplified(actorDisplayName));
+      if (canonicalFromAlias) {
+        mergedKey = canonicalFromAlias;
+      } else {
+        const keysToTry = [actorDisplayName, toTraditional(actorDisplayName), toSimplified(actorDisplayName)];
+        for (const k of keysToTry) {
+          if (byActor[k]) {
+            mergedKey = k;
+            break;
+          }
         }
       }
 
       if (mergedKey) {
+        if (!byActor[mergedKey]) {
+          byActor[mergedKey] = { candidates: [], selectedId: null };
+        }
         if (!seenIdsByKey.has(mergedKey)) seenIdsByKey.set(mergedKey, new Set());
         const seen = seenIdsByKey.get(mergedKey);
         if (seen.has(relPath)) continue;
@@ -276,6 +372,7 @@ module.exports = {
   readMap,
   invalidateCache,
   getActorAvatarSummary,
+  getActorAvatarSummaryAsync,
   getActorAvatarCandidates,
   setActorAvatarSelection,
   scanFromActorDataPath

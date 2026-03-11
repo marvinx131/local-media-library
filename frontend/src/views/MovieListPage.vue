@@ -11,26 +11,37 @@
         </div>
       </el-header>
       <el-main ref="mainContentRef" class="page-theme-bg">
-        <div v-if="listType === 'actor' && actorAvatar?.hasAvatar" class="actor-header-block">
-          <div class="actor-avatar-wrap" @click="openAvatarPreview">
-            <el-image
-              :src="actorAvatar.url"
-              fit="cover"
-              class="actor-avatar-image"
-            >
-              <template #error>
-                <div class="actor-avatar-slot">头像加载失败</div>
-              </template>
-            </el-image>
-            <el-icon
-              v-if="actorAvatar.hasMultiple"
-              class="actor-avatar-edit-icon"
-              @click.stop="openAvatarPicker(actorName)"
-            >
-              <Edit />
-            </el-icon>
+        <div v-if="showActorHeaderBlock" class="actor-header-block">
+          <div class="actor-avatar-wrap" @click="actorAvatar?.hasAvatar ? openAvatarPreview() : null">
+            <template v-if="actorAvatar?.hasAvatar">
+              <el-image
+                :src="actorAvatar.url"
+                fit="cover"
+                class="actor-avatar-image"
+              >
+                <template #error>
+                  <div class="actor-avatar-slot">加载失败</div>
+                </template>
+              </el-image>
+              <el-icon
+                v-if="actorAvatar.hasMultiple"
+                class="actor-avatar-edit-icon"
+                @click.stop="openAvatarPicker(actorCanonicalName)"
+              >
+                <Edit />
+              </el-icon>
+            </template>
+            <div v-else class="actor-avatar-slot">暂无头像</div>
           </div>
-          <div class="actor-header-name">{{ actorName }}</div>
+          <div class="actor-header-info">
+            <div class="actor-header-name-row">
+              <span class="actor-header-name">{{ actorDisplayName }}</span>
+              <el-icon class="actor-name-edit-icon" title="编辑名称与曾用名" @click="openActorProfileEdit">
+                <Edit />
+              </el-icon>
+            </div>
+            <div v-if="actorFormerNamesDisplay" class="actor-header-former-names">{{ actorFormerNamesDisplay }}</div>
+          </div>
         </div>
         <div class="filter-bar" v-if="listType !== 'favorite' && filterGroupList && filterGroupList.length">
           <div
@@ -137,6 +148,33 @@
           :actor-name="avatarPickerActorName"
           @done="onAvatarPickerDone"
         />
+        <el-dialog
+          v-model="actorProfileEditVisible"
+          title="编辑演员名称与曾用名"
+          width="480px"
+          class="actor-profile-edit-dialog"
+          destroy-on-close
+          @closed="onActorProfileEditClosed"
+        >
+          <el-form label-width="100px" label-position="left">
+            <el-form-item label="显示名称">
+              <el-input v-model="editDisplayName" placeholder="留空则显示 NFO 中的原名" clearable />
+            </el-form-item>
+            <el-form-item label="曾用名">
+              <div class="former-names-list">
+                <div v-for="(item, idx) in editFormerNames" :key="idx" class="former-name-row">
+                  <el-input v-model="editFormerNames[idx]" placeholder="曾用名" clearable />
+                  <el-button type="danger" link @click="removeFormerName(idx)">删除</el-button>
+                </div>
+                <el-button type="primary" link @click="addFormerName">+ 添加曾用名</el-button>
+              </div>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="actorProfileEditVisible = false">取消</el-button>
+            <el-button type="primary" @click="saveActorProfile">保存</el-button>
+          </template>
+        </el-dialog>
         <Teleport to="body">
           <div
             v-show="avatarPreviewVisible"
@@ -249,7 +287,7 @@ const pageKey = computed(() => {
 const headerTitle = computed(() => {
   switch (listType.value) {
     case 'home': return 'JavLibrary - 本地影视库';
-    case 'actor': return actorName.value || (viewModeFromQuery.value === 'folder' ? '文件目录详情' : '演员详情');
+    case 'actor': return (viewModeFromQuery.value === 'actor' ? actorDisplayName.value : null) || actorName.value || (viewModeFromQuery.value === 'folder' ? '文件目录详情' : '演员详情');
     case 'genre': return genreName.value || '分类详情';
     case 'director': return directorName.value || '导演详情';
     case 'studio': return studioName.value || '制作商详情';
@@ -262,6 +300,8 @@ const headerTitle = computed(() => {
 
 const actorName = ref('');
 const actorAvatar = ref(null);
+const actorProfile = ref(null);
+const actorDataPathConfigured = ref(false);
 const avatarPreviewVisible = ref(false);
 const avatarPreviewUrls = ref([]);
 const avatarPreviewIndex = ref(0);
@@ -274,7 +314,21 @@ const favoriteDialogVisible = ref(false);
 const favoriteDialogMovie = ref(null);
 const avatarPickerVisible = ref(false);
 const avatarPickerActorName = ref('');
+const actorProfileEditVisible = ref(false);
 const viewModeFromQuery = computed(() => route.query.viewMode || (typeof route.params.id === 'string' && isNaN(parseInt(route.params.id)) ? 'folder' : 'actor'));
+
+const showActorHeaderBlock = computed(() =>
+  listType.value === 'actor' && viewModeFromQuery.value === 'actor' && actorDataPathConfigured.value
+);
+const actorDisplayName = computed(() =>
+  (actorProfile.value?.display_name && actorProfile.value.display_name.trim()) ? actorProfile.value.display_name.trim() : (actorProfile.value?.name || actorName.value || '')
+);
+const actorFormerNamesDisplay = computed(() => {
+  const arr = actorProfile.value?.former_names;
+  if (!Array.isArray(arr) || arr.length === 0) return '';
+  return arr.filter(n => typeof n === 'string' && n.trim()).join('、');
+});
+const actorCanonicalName = computed(() => actorProfile.value?.name || actorName.value || '');
 
 const emptyText = computed(() => (listType.value === 'search' ? '未找到匹配的影片' : '暂无影片数据'));
 const showPagination = computed(() => {
@@ -290,26 +344,75 @@ function openSlotDialog() {
   slotDialogVisible.value = true;
 }
 
+const editDisplayName = ref('');
+const editFormerNames = ref([]);
+
+function openActorProfileEdit() {
+  if (!actorProfile.value || viewModeFromQuery.value !== 'actor') return;
+  editDisplayName.value = (actorProfile.value.display_name && actorProfile.value.display_name.trim())
+    ? actorProfile.value.display_name.trim()
+    : (actorProfile.value.name || '');
+  editFormerNames.value = Array.isArray(actorProfile.value.former_names) ? [...actorProfile.value.former_names] : [];
+  actorProfileEditVisible.value = true;
+}
+
+function addFormerName() {
+  editFormerNames.value.push('');
+}
+
+function removeFormerName(idx) {
+  editFormerNames.value.splice(idx, 1);
+}
+
+function onActorProfileEditClosed() {
+  editDisplayName.value = '';
+  editFormerNames.value = [];
+}
+
+async function saveActorProfile() {
+  const id = actorProfile.value?.id;
+  if (id == null || isNaN(Number(id))) return;
+  const displayName = typeof editDisplayName.value === 'string' ? editDisplayName.value.trim() : '';
+  const formerNames = editFormerNames.value.map(n => (typeof n === 'string' ? n.trim() : '')).filter(Boolean);
+  try {
+    const res = await window.electronAPI.actors.updateProfile(id, { displayName: displayName || null, formerNames });
+    if (res?.success) {
+      actorProfile.value = {
+        ...actorProfile.value,
+        display_name: displayName || null,
+        former_names: formerNames
+      };
+      actorProfileEditVisible.value = false;
+      ElMessage.success('已保存');
+    } else {
+      ElMessage.error(res?.message || '保存失败');
+    }
+  } catch (e) {
+    ElMessage.error(e?.message || '保存失败');
+  }
+}
+
 function openAvatarPicker(name) {
-  avatarPickerActorName.value = name || actorName.value || '';
+  avatarPickerActorName.value = name || actorCanonicalName.value || actorName.value || '';
   avatarPickerVisible.value = true;
 }
 
-async function onAvatarPickerDone() {
-  if (!actorName.value || listType.value !== 'actor') return;
-  try {
-    const res = await window.electronAPI?.actorAvatars?.getSummaryByName?.(actorName.value);
+function onAvatarPickerDone() {
+  const name = actorCanonicalName.value || actorName.value;
+  if (!name || listType.value !== 'actor') return;
+  window.electronAPI?.actorAvatars?.getSummaryByName?.(name)?.then((res) => {
     if (res?.success && res?.data) {
       actorAvatar.value = res.data;
-      window.dispatchEvent(new CustomEvent('actorAvatarChanged', { detail: { name: actorName.value } }));
+      window.dispatchEvent(new CustomEvent('actorAvatarChanged', { detail: { name } }));
     }
-  } catch (_) {}
+  }).catch(() => {});
 }
 
 async function openAvatarPreview() {
-  if (!actorName.value) return;
+  const name = actorCanonicalName.value || actorName.value;
+  if (!name) return;
   try {
-    const res = await window.electronAPI?.actorAvatars?.getCandidatesByName?.(actorName.value);
+    const res = await window.electronAPI?.actorAvatars?.getCandidatesByName?.(name);
     const list = (res?.success && Array.isArray(res.data?.candidates)) ? res.data.candidates : [];
     const urls = list.map(c => c.url).filter(Boolean);
     if (!urls.length && actorAvatar.value?.url) {
@@ -469,7 +572,10 @@ const loadDataRaw = async () => {
   let result = { success: false, data: [], total: 0 };
 
   try {
-    if (listType.value !== 'actor') actorAvatar.value = null;
+    if (listType.value !== 'actor') {
+      actorAvatar.value = null;
+      actorProfile.value = null;
+    }
     switch (listType.value) {
       case 'home': {
         result = await window.electronAPI.movies.getList({ page, pageSize, sortBy, filterGenres, filterYears });
@@ -483,18 +589,48 @@ const loadDataRaw = async () => {
           return;
         }
         result = await window.electronAPI.actors.getMovies(id, { page, pageSize, sortBy, viewMode: viewModeFromQuery.value, filterGenres, filterYears });
+        try {
+          const path = await window.electronAPI.settings.getActorDataPath();
+          actorDataPathConfigured.value = !!path;
+        } catch (_) {
+          actorDataPathConfigured.value = false;
+        }
         if (result.success && result.actor?.name) {
           actorName.value = result.actor.name;
           actorAvatar.value = result.actor.avatar || null;
+          if (viewModeFromQuery.value === 'actor') {
+            actorProfile.value = {
+              id: result.actor.id,
+              name: result.actor.name,
+              display_name: result.actor.display_name ?? null,
+              former_names: Array.isArray(result.actor.former_names) ? result.actor.former_names : []
+            };
+          } else {
+            actorProfile.value = null;
+          }
         } else {
           actorAvatar.value = null;
+          actorProfile.value = null;
           if (viewModeFromQuery.value === 'folder' && id) actorName.value = String(id);
           else if (result.success && viewModeFromQuery.value === 'actor' && !isNaN(id)) {
             try {
               const ar = await window.electronAPI.actors.getById(id, { viewMode: viewModeFromQuery.value });
-              if (ar?.success && ar?.data?.name) actorName.value = ar.data.name;
-              else actorName.value = '演员 ' + id;
-            } catch (_) { actorName.value = '演员 ' + id; }
+              if (ar?.success && ar?.data?.name) {
+                actorName.value = ar.data.name;
+                actorProfile.value = {
+                  id: ar.data.id,
+                  name: ar.data.name,
+                  display_name: ar.data.display_name ?? null,
+                  former_names: Array.isArray(ar.data.former_names) ? ar.data.former_names : []
+                };
+              } else {
+                actorName.value = '演员 ' + id;
+                actorProfile.value = null;
+              }
+            } catch (_) {
+              actorName.value = '演员 ' + id;
+              actorProfile.value = null;
+            }
           }
         }
         break;
@@ -846,8 +982,8 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 .actor-avatar-image {
-  width: 100px;
-  height: 100px;
+  width: 150px;
+  height: 150px;
   border-radius: 8px;
   display: block;
   background: var(--el-fill-color-light);
@@ -880,10 +1016,44 @@ onBeforeUnmount(() => {
 .actor-avatar-edit-icon:hover {
   background: var(--el-color-primary-light-9);
 }
+.actor-header-info {
+  flex: 1;
+  min-width: 0;
+}
+.actor-header-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .actor-header-name {
   font-size: 24px;
   font-weight: 700;
   color: var(--content-title-color, #303133);
+}
+.actor-name-edit-icon {
+  font-size: 18px;
+  color: var(--el-color-primary);
+  cursor: pointer;
+}
+.actor-name-edit-icon:hover {
+  color: var(--el-color-primary-light-3);
+}
+.actor-header-former-names {
+  font-size: 13px;
+  color: var(--content-subtitle-color, #909399);
+  margin-top: 4px;
+}
+.actor-profile-edit-dialog .former-names-list {
+  width: 100%;
+}
+.actor-profile-edit-dialog .former-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.actor-profile-edit-dialog .former-name-row .el-input {
+  flex: 1;
 }
 
 .avatar-preview-mask {
