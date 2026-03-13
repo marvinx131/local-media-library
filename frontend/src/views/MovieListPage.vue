@@ -16,13 +16,16 @@
             <template v-if="actorAvatar?.hasAvatar">
               <el-image
                 :src="actorAvatar.url"
-                fit="cover"
+                fit="contain"
                 class="actor-avatar-image"
               >
                 <template #error>
                   <div class="actor-avatar-slot">加载失败</div>
                 </template>
               </el-image>
+              <div class="actor-avatar-zoom-mask" title="点击放大查看">
+                <el-icon class="actor-avatar-zoom-icon"><ZoomIn /></el-icon>
+              </div>
               <el-icon
                 v-if="actorAvatar.hasMultiple"
                 class="actor-avatar-edit-icon"
@@ -229,7 +232,7 @@ defineOptions({ name: 'MovieListPage' });
 import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ArrowDown, ArrowUp, QuestionFilled, Edit } from '@element-plus/icons-vue';
+import { ArrowDown, ArrowUp, QuestionFilled, Edit, ZoomIn } from '@element-plus/icons-vue';
 import MovieListLayout from '../components/MovieListLayout.vue';
 import ActorAvatarPickerDialog from '../components/ActorAvatarPickerDialog.vue';
 import SlotMachineDialog from '../components/SlotMachineDialog.vue';
@@ -1086,6 +1089,26 @@ onBeforeUnmount(() => {
   display: block;
   background: var(--el-fill-color-light);
   cursor: pointer;
+}
+/* 悬浮遮罩：提示点击可放大查看，兼容日间/暗色主题 */
+.actor-avatar-zoom-mask {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+.actor-avatar-wrap:hover .actor-avatar-zoom-mask {
+  opacity: 1;
+}
+.actor-avatar-zoom-icon {
+  font-size: 36px;
+  color: #fff;
 }
 .actor-avatar-slot {
   width: 100px;
