@@ -193,6 +193,27 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     }
   });
 
+  /** 与「扫描演员信息」相同的逻辑，用于编辑/合并后自动刷新头像映射；后台执行不阻塞 IPC 返回 */
+  function runActorAvatarScanInBackground() {
+    const actorDataPath = settingsStore.get('actorDataPath', null);
+    if (!actorDataPath) return;
+    const getActorsWithAliases = async () => {
+      const sequelize = getSequelize();
+      if (!sequelize?.models?.ActorFromNfo) return [];
+      const rows = await sequelize.models.ActorFromNfo.findAll({
+        attributes: ['name', 'display_name', 'former_names']
+      });
+      return rows.map(r => ({
+        name: r.name,
+        display_name: r.display_name || null,
+        former_names: r.former_names
+      }));
+    };
+    actorAvatarService.scanFromActorDataPath(actorDataPath, getActorsWithAliases)
+      .then(() => { console.log('演员信息更新/合并后，头像映射已自动刷新'); })
+      .catch(e => { console.warn('演员信息更新/合并后自动刷新头像映射失败:', e?.message || e); });
+  }
+
   ipcMain.handle('system:scanActors', async () => {
     try {
       const actorDataPath = settingsStore.get('actorDataPath', null);
@@ -1617,6 +1638,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
       }
       if (Object.keys(updates).length === 0) return { success: true };
       await actor.update(updates);
+      runActorAvatarScanInBackground();
       return { success: true };
     } catch (e) {
       return { success: false, message: e?.message || String(e) };
@@ -1730,6 +1752,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         console.warn('合并演员头像映射失败（忽略，不影响主流程）:', e.message || String(e));
       }
 
+      runActorAvatarScanInBackground();
       return { success: true };
     } catch (e) {
       return { success: false, message: e?.message || String(e) };
