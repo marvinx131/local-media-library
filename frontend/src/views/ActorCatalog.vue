@@ -22,6 +22,16 @@
                 title="放大图片"
                 @click="gridZoomIn"
               />
+              <el-select
+                v-model="actorSortOption"
+                style="width: 220px;"
+                class="catalog-selector"
+              >
+                <el-option label="按照名称排序 - 正序" value="name-asc" />
+                <el-option label="按照名称排序 - 倒序" value="name-desc" />
+                <el-option label="按照作品数量排序 - 正序" value="count-asc" />
+                <el-option label="按照作品数量排序 - 倒序" value="count-desc" />
+              </el-select>
             </template>
             <el-select
               v-model="currentCatalog"
@@ -47,7 +57,7 @@
           </div>
           <div v-else class="actors-grid" :class="`grid-${gridSize}`">
               <el-card
-                v-for="item in filteredItems"
+                v-for="item in sortedItems"
                 :key="item.id"
                 class="actor-card"
                 shadow="hover"
@@ -119,6 +129,17 @@ const actors = ref([]);
 const filterPlayable = ref(false);
 const avatarPickerVisible = ref(false);
 const avatarPickerActorName = ref('');
+const ACTOR_SORT_KEY = 'javlibrary_actor_sort_option';
+const getInitialActorSort = () => {
+  const allowed = ['name-asc', 'name-desc', 'count-asc', 'count-desc'];
+  try {
+    const stored = localStorage.getItem(ACTOR_SORT_KEY);
+    return allowed.includes(stored) ? stored : 'name-asc';
+  } catch (_) {
+    return 'name-asc';
+  }
+};
+const actorSortOption = ref(getInitialActorSort());
 const GRID_SIZES = ['small', 'medium', 'large', 'xlarge', 'xxlarge'];
 const GRID_SIZE_KEY = 'javlibrary_actor_grid_size';
 const getInitialGridSize = () => {
@@ -306,6 +327,42 @@ const filteredItems = computed(() => {
   return actors.value.filter(item => item.playableCount > 0);
 });
 
+const sortedItems = computed(() => {
+  const list = filteredItems.value.slice();
+  const { type, mode } = catalogType.value;
+  if (type !== 'actor' || mode !== 'actor') {
+    return list;
+  }
+  const getDisplayName = (item) => {
+    if (item.display_name && typeof item.display_name === 'string' && item.display_name.trim()) {
+      return item.display_name.trim();
+    }
+    return (item.name || '').toString();
+  };
+  const collator = typeof Intl !== 'undefined'
+    ? new Intl.Collator('zh-Hans', { sensitivity: 'base', numeric: true })
+    : null;
+  switch (actorSortOption.value) {
+    case 'name-desc':
+      return list.sort((a, b) => {
+        const an = getDisplayName(a);
+        const bn = getDisplayName(b);
+        return collator ? collator.compare(bn, an) : bn.localeCompare(an);
+      });
+    case 'count-asc':
+      return list.sort((a, b) => (a.totalCount || 0) - (b.totalCount || 0));
+    case 'count-desc':
+      return list.sort((a, b) => (b.totalCount || 0) - (a.totalCount || 0));
+    case 'name-asc':
+    default:
+      return list.sort((a, b) => {
+        const an = getDisplayName(a);
+        const bn = getDisplayName(b);
+        return collator ? collator.compare(an, bn) : an.localeCompare(bn);
+      });
+  }
+});
+
 // 加载过滤设置
 const loadFilterPlayable = async () => {
   try {
@@ -322,6 +379,15 @@ onActivated(() => {
     loadCatalog();
   }
 });
+
+watch(
+  () => actorSortOption.value,
+  (val) => {
+    try {
+      localStorage.setItem(ACTOR_SORT_KEY, val);
+    } catch (_) {}
+  }
+);
 
 function onActorProfileChanged() {
   const { type } = catalogType.value;
