@@ -1638,8 +1638,8 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
           .filter(Boolean);
         const uniq = Array.from(new Set(list));
 
-        // 计算当前应视为显示名称和基础名称（用于剔除同名曾用名）
-        const baseName = actor.name && String(actor.name).trim();
+        // 仅剔除与「显示名」重复的曾用名，避免同一名称在显示名与曾用名中重复展示。
+        // 不剔除与原始名称（name）相同的项：用户可能将 NFO 原始名加入曾用名以参与头像匹配等，且 name 不可编辑，允许保留。
         const displayTrim = (() => {
           if (updates.display_name !== undefined) {
             return updates.display_name && String(updates.display_name).trim();
@@ -1650,7 +1650,6 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         const cleaned = uniq.filter(n => {
           if (!n) return false;
           if (displayTrim && n === displayTrim) return false;
-          if (baseName && n === baseName) return false;
           return true;
         });
 
@@ -1733,21 +1732,22 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
           if (n && typeof n === 'string' && n.trim()) mergedFormerSet.add(n.trim());
         });
 
-        // 不在曾用名中重复保留与当前 display_name 或 name 完全相同的名称
-        const targetDisplayTrim = target.display_name && String(target.display_name).trim();
+        // 去重：页面在 display_name 为空时会用 name 作为展示名，故用「有效展示名」参与去重，避免合并后曾用名与展示名重复
         const targetNameTrim = target.name && String(target.name).trim();
-        if (targetDisplayTrim) {
-          mergedFormerSet.delete(targetDisplayTrim);
-        }
-        if (targetNameTrim) {
-          mergedFormerSet.delete(targetNameTrim);
-        }
+        const effectiveDisplayName = (target.display_name && String(target.display_name).trim()) || targetNameTrim || null;
+        if (effectiveDisplayName) mergedFormerSet.delete(effectiveDisplayName);
+        if (targetNameTrim && targetNameTrim !== effectiveDisplayName) mergedFormerSet.delete(targetNameTrim);
 
         const mergedFormer = Array.from(mergedFormerSet);
 
-        await target.update({
+        // 若 target 原本无 display_name，合并后将其设为 name，使展示名与曾用名去重结果在库中一致
+        const targetUpdate = {
           former_names: mergedFormer.length ? JSON.stringify(mergedFormer) : null
-        }, { transaction: t });
+        };
+        if (!(target.display_name && String(target.display_name).trim())) {
+          targetUpdate.display_name = target.name;
+        }
+        await target.update(targetUpdate, { transaction: t });
 
         // 3. 将 source 标记为已合并到 target
         await source.update({
