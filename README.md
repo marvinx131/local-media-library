@@ -157,8 +157,10 @@ data/
 
 ### 如何准备演员数据（可选）
 
-若需在应用中显示演员头像，可拉取 [gfriends/gfriends](https://github.com/gfriends/gfriends) 项目；在设置中选择的演员数据路径**必须包含** `Filetree.json` 与 `Content` 目录。选好路径后点击「扫描演员信息」即可。
+若需在应用中显示演员头像，可拉取 [gfriends/gfriends](https://github.com/gfriends/gfriends) 项目；在设置中选择的演员数据路径**必须包含** `Filetree.json` 与 `Content` 目录。选好包含以上两者的文件夹路径后点击「扫描演员信息」即可。
 若需自建或修改数据，请参阅 [演员头像数据格式说明（Filetree.json + Content）](演员头像数据格式说明.md)。
+
+**注意：** 考虑到演员数据一般较多，所以对该页面进行了缓存处理，不会频繁刷新，如果添加了演员数据发现头像并没有出现，可点击页面上的刷新按钮进行刷新
 
 ### 主要功能
 
