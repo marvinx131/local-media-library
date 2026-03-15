@@ -8,6 +8,7 @@ const { getExtraFanartRelativePaths } = require('../utils/fileUtils');
 const path = require('path');
 const fs = require('fs-extra');
 const Store = require('electron-store');
+const { getStoreName } = require('../config/storeName');
 const scanState = require('../state/scanState');
 const favoritesService = require('../services/favoritesService');
 const genreCategoriesService = require('../services/genreCategoriesService');
@@ -23,11 +24,8 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
   // 保存主窗口引用
   mainWindowRef = mainWindow;
   
-  // 创建设置存储实例
-  // 在开发环境中使用不同的配置名称，避免与生产环境共享数据
-  const settingsStore = store || new Store({
-    name: process.env.NODE_ENV === 'development' ? 'javlibrary-dev' : 'javlibrary'
-  });
+  // 创建设置存储实例（开发/正式/测试环境通过 getStoreName 区分）
+  const settingsStore = store || new Store({ name: getStoreName() });
 
   /** 根据 sortBy 参数返回 Sequelize order 数组（支持 premiered/title/folder_updated_at 正序/倒序） */
   function getOrderFromSortBy(sortBy) {

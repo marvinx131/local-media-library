@@ -2,6 +2,11 @@ const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const { session } = require('electron');
 const path = require('path');
 
+// 测试包：在 ready 前将 userData 指向带 -test 后缀的目录，与正式版数据隔离
+if (app.getName() === 'JavLibrary_beta') {
+  app.setPath('userData', path.join(app.getPath('appData'), 'JavLibrary-test'));
+}
+
 // 添加错误处理
 process.on('uncaughtException', (error) => {
   console.error('未捕获的异常:', error);
@@ -11,15 +16,14 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('未处理的Promise拒绝:', reason);
 });
 const Store = require('electron-store');
+const { getStoreName } = require('./src/config/storeName');
 const { initDatabase } = require('./src/config/database');
 const { runStartupSync } = require('./src/services/sync');
 const { registerIpcHandlers, updateMainWindow } = require('./src/ipc/handlers');
 const scanState = require('./src/state/scanState');
 
-// 配置存储：用户数据存于 AppData，开发/正式环境通过 name 区分
-const store = new Store({
-  name: process.env.NODE_ENV === 'development' ? 'javlibrary-dev' : 'javlibrary'
-});
+// 配置存储：用户数据存于 AppData，开发/正式/测试环境通过 name 区分
+const store = new Store({ name: getStoreName() });
 
 let mainWindow = null;
 

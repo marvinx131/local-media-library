@@ -89,12 +89,18 @@ npm run dev:frontend  # 启动前端开发服务器（端口 5173）
 
 ## 构建打包
 
-```bash
-# 构建前端
-npm run build:frontend
+- **正式版**：`npm run build` 或先 `npm run build:frontend` 再 `npm run build:electron`。安装包输出到 `dist/`，应用名为 JavLibrary，用户数据在 `%APPDATA%\JavLibrary\`。
+- **测试版**：`npm run build:test`（前端以 `--mode test` 构建后，再按测试配置打包）。安装包输出到 `dist-test/`，应用名为 **JavLibrary_beta**，appId 为 `com.javlibrary.app.test`，用户数据在 `%APPDATA%\JavLibrary-test\`，与正式版完全隔离；可与正式版同时安装。
 
-# 打包 Electron 应用
+环境变量由根目录 `.env`、`.env.test` 管理（如 `VITE_APP_ENV`）；本地覆盖可使用 `.env.local`（已加入 .gitignore）。
+
+```bash
+# 正式版
+npm run build:frontend
 npm run build:electron
+
+# 测试版（一键）
+npm run build:test
 
 # 快速构建（跳过 sqlite3 重新编译）
 npm run build:quick
