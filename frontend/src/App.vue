@@ -36,7 +36,7 @@
     </div>
     <div class="router-view-container">
       <router-view v-slot="{ Component, route: r }">
-        <keep-alive :max="10" :include="cachedViewNames">
+        <keep-alive :max="5" :include="cachedViewNames">
           <component :is="Component" :key="cacheKey(r)" />
         </keep-alive>
       </router-view>
