@@ -23,6 +23,9 @@ win:
     - target: nsis
       arch:
         - x64
+    - target: portable
+      arch:
+        - x64
   # icon: build/icon.ico  # 暂时注释掉，避免需要资源编辑工具
   # 完全禁用代码签名（开发环境不需要）
   sign: null
@@ -42,6 +45,10 @@ nsis:
   createStartMenuShortcut: true
   # 允许请求管理员权限，避免覆盖时因文件占用或权限导致失败
   allowElevation: true
+
+# 便携版配置
+portable:
+  artifactName: "${productName}-Portable-${version}.${ext}"
 electronVersion: 28.0.0
 # 配置 native 依赖的构建 - 完全跳过重新编译（使用已编译的版本）
 nodeGypRebuild: false
