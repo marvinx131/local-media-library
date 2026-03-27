@@ -129,6 +129,18 @@
             </div>
             <div
               v-if="showFavoriteHeart"
+              class="playlist-icon"
+              :class="{ 'is-in-playlist': isInPlaylist(movie) }"
+              @click.stop="$emit('togglePlaylist', movie)"
+              title="播放清单"
+            >
+              <el-icon :size="18">
+                <Plus v-if="!isInPlaylist(movie)" />
+                <Check v-else />
+              </el-icon>
+            </div>
+            <div
+              v-if="showFavoriteHeart"
               class="favorite-icon"
               :class="{ 'is-favorited': isFavorited(movie) }"
               @click.stop="$emit('toggleFavorite', movie)"
@@ -181,7 +193,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue';
 import { useElementSize } from '@vueuse/core';
-import { VideoPlay, Star, StarFilled } from '@element-plus/icons-vue';
+import { VideoPlay, Star, StarFilled, Plus, Check } from '@element-plus/icons-vue';
 import { getImageCacheKey } from '../utils/imageLoader';
 
 const BASE_COL_WIDTH = 150;
@@ -233,7 +245,7 @@ function onPosterLeave() {
   hoveredPoster.value = null;
 }
 
-const emit = defineEmits(['rowClick', 'update:pageSize', 'update:currentPage', 'update:sortBy', 'update:viewMode', 'playVideo', 'toggleFavorite']);
+const emit = defineEmits(['rowClick', 'update:pageSize', 'update:currentPage', 'update:sortBy', 'update:viewMode', 'playVideo', 'toggleFavorite', 'togglePlaylist']);
 
 function onPosterClick(movie) {
   hoveredPoster.value = null;
@@ -257,6 +269,8 @@ const props = defineProps({
   showFavoriteHeart: { type: Boolean, default: false },
   /** 按影片 code 的收藏夹 id 列表，用于判断是否已收藏：{ [code]: string[] } */
   favoriteFolderIdsByCode: { type: Object, default: () => ({}) },
+  /** 播放清单中的 code 集合，用于判断是否已在清单中 */
+  playlistCodes: { type: Set, default: () => new Set() },
   /** 列表页路由版本号：每次路由变化递增，用于清理缩图悬浮放大层 */
   routeVersion: { type: Number, default: 0 }
 });
@@ -273,6 +287,11 @@ function isFavorited(movie) {
   if (!movie?.code) return false;
   const ids = props.favoriteFolderIdsByCode[movie.code];
   return Array.isArray(ids) && ids.length > 0;
+}
+
+function isInPlaylist(movie) {
+  if (!movie?.code) return false;
+  return props.playlistCodes.has(movie.code);
 }
 
 const internalCurrentPage = computed({
@@ -430,6 +449,24 @@ const onImageLoad = (movie) => {
   justify-content: center;
   z-index: 10;
   cursor: pointer;
+}
+.playlist-icon {
+  position: absolute;
+  bottom: 8px;
+  left: 46px;
+  width: 28px;
+  height: 28px;
+  background-color: rgba(0, 0, 0, 0.6);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  cursor: pointer;
+  color: #fff;
+}
+.playlist-icon.is-in-playlist {
+  color: #409eff;
 }
 .favorite-icon {
   position: absolute;

@@ -190,6 +190,29 @@
           </el-form>
         </el-card>
         
+        <el-card style="margin-top: 20px;">
+          <template #header>
+            <span>播放器设置</span>
+          </template>
+          <el-form label-width="120px">
+            <el-form-item label="自定义播放器">
+              <div style="width: 100%; display: flex; align-items: center; gap: 8px;">
+                <el-input
+                  v-model="customPlayerPath"
+                  placeholder="留空使用系统默认播放器"
+                  style="flex: 1;"
+                  clearable
+                  @change="handleCustomPlayerChange"
+                />
+                <el-button type="primary" @click="choosePlayerPath">选择</el-button>
+              </div>
+              <el-text type="info" size="small" style="display: block; margin-top: 4px;">
+                支持 PotPlayer、MPV、VLC 等播放器。例如：C:\Program Files\PotPlayer\PotPlayerMini64.exe
+              </el-text>
+            </el-form-item>
+          </el-form>
+        </el-card>
+        
       </el-main>
     </el-container>
   </div>
@@ -221,6 +244,7 @@ const syncDiffProgress = ref({
 });
 const syncDiffResult = ref(null); // { added, removed, addedList, failedList }
 const filterPlayable = ref(false);
+const customPlayerPath = ref('');
 const scanProgress = ref({
   current: 0,
   total: 0,
@@ -344,6 +368,35 @@ const handleFilterPlayableChange = async (value) => {
     ElMessage.error('保存设置失败: ' + error.message);
     // 恢复原值
     filterPlayable.value = !value;
+  }
+};
+
+const loadCustomPlayerPath = async () => {
+  try {
+    customPlayerPath.value = await window.electronAPI.settings.getCustomPlayerPath() || '';
+  } catch (error) {
+    console.error('加载播放器设置失败:', error);
+  }
+};
+
+const handleCustomPlayerChange = async (value) => {
+  try {
+    await window.electronAPI.settings.setCustomPlayerPath(value || '');
+    ElMessage.success(value ? '已设置自定义播放器' : '已恢复系统默认播放器');
+  } catch (error) {
+    ElMessage.error('保存失败: ' + error.message);
+  }
+};
+
+const choosePlayerPath = async () => {
+  try {
+    const res = await window.electronAPI.settings.choosePlayerPath();
+    if (res?.success && res.path) {
+      customPlayerPath.value = res.path;
+      ElMessage.success('已设置自定义播放器');
+    }
+  } catch (error) {
+    ElMessage.error('选择失败');
   }
 };
 
@@ -544,6 +597,7 @@ onMounted(async () => {
   loadActorDataPath();
   loadFilterPlayable();
   loadAutoScanOnStartup();
+  loadCustomPlayerPath();
 
   const status = await window.electronAPI?.system?.getScanStatus?.();
   if (status?.inProgress && status?.type) {

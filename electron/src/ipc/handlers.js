@@ -149,6 +149,35 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     return { success: true };
   });
 
+  ipcMain.handle('settings:getCustomPlayerPath', () => {
+    return settingsStore.get('customPlayerPath', '');
+  });
+
+  ipcMain.handle('settings:setCustomPlayerPath', (event, value) => {
+    settingsStore.set('customPlayerPath', value || '');
+    return { success: true };
+  });
+
+  ipcMain.handle('settings:choosePlayerPath', async () => {
+    try {
+      const win = mainWindowRef || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+      if (!win) return { success: false, message: '无法打开对话框' };
+      const result = await dialog.showOpenDialog(win, {
+        properties: ['openFile'],
+        title: '选择播放器可执行文件',
+        filters: [
+          { name: '可执行文件', extensions: ['exe', 'app', ''] }
+        ]
+      });
+      if (result.canceled || !result.filePaths.length) return { success: false, message: '已取消' };
+      const playerPath = result.filePaths[0];
+      settingsStore.set('customPlayerPath', playerPath);
+      return { success: true, path: playerPath };
+    } catch (e) {
+      return { success: false, message: e.message };
+    }
+  });
+
   ipcMain.handle('settings:getAutoScanOnStartup', () => {
     return settingsStore.get('autoScanOnStartup', true);
   });
@@ -333,19 +362,36 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         }
         
         // 使用找到的路径
-        await shell.openPath(foundPath);
-        return { success: true };
+        return await playWithPlayer(foundPath);
       }
       
-      // 使用系统默认播放器打开视频文件
-      await shell.openPath(videoPath);
-      
-      return { success: true };
+      return await playWithPlayer(videoPath);
     } catch (error) {
       console.error('播放视频失败:', error);
       return { success: false, message: error.message };
     }
   });
+
+  /** 使用自定义播放器或系统默认播放器播放视频 */
+  async function playWithPlayer(videoPath) {
+    const customPlayer = settingsStore.get('customPlayerPath', '');
+    if (customPlayer && customPlayer.trim()) {
+      const { execFile } = require('child_process');
+      return new Promise((resolve) => {
+        execFile(customPlayer.trim(), [videoPath], (error) => {
+          if (error) {
+            console.error('自定义播放器启动失败:', error);
+            resolve({ success: false, message: '播放器启动失败: ' + error.message });
+          } else {
+            resolve({ success: true });
+          }
+        });
+      });
+    } else {
+      await shell.openPath(videoPath);
+      return { success: true };
+    }
+  }
 
   // 收藏夹 IPC（按识别码 code 存储，扫描时不清空）
   ipcMain.handle('favorites:getFolders', () => {

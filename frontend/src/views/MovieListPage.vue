@@ -119,9 +119,11 @@
           @rowClick="goToMovieDetail"
           @playVideo="onPlayVideo"
           @toggleFavorite="onToggleFavorite"
+          @togglePlaylist="onTogglePlaylist"
           :load-movie-image="movie => loadMovieImage(movie.poster_path, movie.data_path_index)"
           :show-favorite-heart="true"
           :favorite-folder-ids-by-code="favoriteFolderIdsByCode"
+          :playlist-codes="playlistCodes"
         >
           <template #before-view-mode>
             <div class="lottery-entry">
@@ -316,6 +318,7 @@ const directorName = ref('');
 const studioName = ref('');
 const favoriteFolderName = ref('');
 const favoriteFolderIdsByCode = ref({});
+const playlistCodes = ref(new Set());
 const favoriteDialogVisible = ref(false);
 const favoriteDialogMovie = ref(null);
 const avatarPickerVisible = ref(false);
@@ -855,6 +858,29 @@ const loadDataRaw = async () => {
   }
 };
 
+async function loadPlaylistCodes() {
+  try {
+    const res = await window.electronAPI.playlist.getCodes();
+    if (res?.success && Array.isArray(res.data)) {
+      playlistCodes.value = new Set(res.data);
+    }
+  } catch {}
+}
+
+async function onTogglePlaylist(movie) {
+  if (!movie?.code) return;
+  try {
+    if (playlistCodes.value.has(movie.code)) {
+      await window.electronAPI.playlist.removeCode(movie.code);
+      playlistCodes.value.delete(movie.code);
+    } else {
+      await window.electronAPI.playlist.addCode(movie.code);
+      playlistCodes.value.add(movie.code);
+    }
+    playlistCodes.value = new Set(playlistCodes.value);
+  } catch {}
+}
+
 const loadData = withLoadingOptimization(loadDataRaw);
 
 async function loadMovieImage(posterPath, dataPathIndex = 0) {
@@ -970,6 +996,7 @@ watch(
 
 onMounted(() => {
   resumeBackgroundLoading();
+  loadPlaylistCodes();
   syncCurrentPageFromState();
   const query = route.query;
   if (query.page != null) {

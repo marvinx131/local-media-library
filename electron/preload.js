@@ -101,7 +101,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setAutoScanOnStartup: (value) => ipcRenderer.invoke('settings:setAutoScanOnStartup', value),
     getActorDataPath: () => ipcRenderer.invoke('settings:getActorDataPath'),
     setActorDataPath: () => ipcRenderer.invoke('settings:setActorDataPath'),
-    clearActorDataPath: () => ipcRenderer.invoke('settings:clearActorDataPath')
+    clearActorDataPath: () => ipcRenderer.invoke('settings:clearActorDataPath'),
+    getCustomPlayerPath: () => ipcRenderer.invoke('settings:getCustomPlayerPath'),
+    setCustomPlayerPath: (value) => ipcRenderer.invoke('settings:setCustomPlayerPath', value),
+    choosePlayerPath: () => ipcRenderer.invoke('settings:choosePlayerPath')
   },
   
   // 播放相关
