@@ -29,6 +29,8 @@
             <el-option label="按更新时间排序-倒序" value="folder_updated_at-desc" />
             <el-option label="按标题排序-正序" value="title-asc" />
             <el-option label="按标题排序-倒序" value="title-desc" />
+            <el-option label="按评分排序-正序" value="rating-asc" />
+            <el-option label="按评分排序-倒序" value="rating-desc" />
           </el-select>
           <!-- 预留左侧插槽（例如搜索结果统计文案等） -->
           <slot name="left-extra" />
@@ -154,6 +156,15 @@
           <div class="movie-info">
             <div class="movie-title" :title="movie.title">{{ movie.title }}</div>
             <div class="movie-meta">{{ movie.code }}</div>
+            <div v-if="movie.rating > 0" class="movie-rating">
+              <el-rate
+                :model-value="movie.rating"
+                :allow-half="true"
+                disabled
+                size="small"
+                :colors="['#99A9BF', '#F7BA2A', '#FF9900']"
+              />
+            </div>
           </div>
         </el-card>
       </div>
@@ -521,6 +532,10 @@ const onImageLoad = (movie) => {
 .movie-meta {
   font-size: 12px;
   color: #909399;
+}
+
+.movie-rating {
+  margin-top: 4px;
 }
 
 .pagination {

@@ -376,8 +376,8 @@ async function randomPlay() {
     }
     
     // 添加当前筛选的分类
-    if (filterGenres.value.length > 0) {
-      params.filterGenres = filterGenres.value;
+    if (selectedGenreNames.value.length > 0) {
+      params.filterGenres = selectedGenreNames.value;
     }
     
     const result = await window.electronAPI.movies.getRandomFromList(params);

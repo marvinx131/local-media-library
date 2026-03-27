@@ -36,6 +36,8 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     if (sortBy === 'premiered-desc') return [['premiered', 'DESC']];
     if (sortBy === 'folder_updated_at-asc') return [['folder_updated_at', 'ASC']];
     if (sortBy === 'folder_updated_at-desc') return [['folder_updated_at', 'DESC']];
+    if (sortBy === 'rating-asc') return [['rating', 'ASC']];
+    if (sortBy === 'rating-desc') return [['rating', 'DESC']];
     return [['premiered', 'DESC']];
   }
 
@@ -506,6 +508,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         video_path: movie.video_path,
         data_path_index: movie.data_path_index || 0,
         folder_updated_at: movie.folder_updated_at,
+        rating: movie.rating || 0,
         created_at: movie.created_at,
         updated_at: movie.updated_at,
         actors: movie.Actors?.map(a => ({ id: a.id, name: a.name })) || [],
@@ -597,6 +600,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         video_path: movie.video_path,
         data_path_index: movie.data_path_index || 0,
         folder_updated_at: movie.folder_updated_at,
+        rating: movie.rating || 0,
         created_at: movie.created_at,
         updated_at: movie.updated_at,
         actors: movie.Actors?.map(a => ({ id: a.id, name: a.name })) || [],
@@ -734,6 +738,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
           video_path: movie.video_path,
           data_path_index: movie.data_path_index || 0,
           folder_updated_at: movie.folder_updated_at,
+        rating: movie.rating || 0,
           created_at: movie.created_at,
           updated_at: movie.updated_at
         };
@@ -902,6 +907,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
           video_path: movie.video_path,
           data_path_index: movie.data_path_index || 0,
           folder_updated_at: movie.folder_updated_at,
+        rating: movie.rating || 0,
           created_at: movie.created_at,
           updated_at: movie.updated_at
         };
@@ -971,6 +977,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         video_path: movie.video_path,
         data_path_index: movie.data_path_index || 0,
         folder_updated_at: movie.folder_updated_at,
+        rating: movie.rating || 0,
         created_at: movie.created_at,
         updated_at: movie.updated_at
       };
@@ -1496,6 +1503,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
           video_path: movie.video_path,
           data_path_index: movie.data_path_index || 0,
           folder_updated_at: movie.folder_updated_at,
+        rating: movie.rating || 0,
           created_at: movie.created_at,
           updated_at: movie.updated_at
         };
@@ -2099,6 +2107,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
           video_path: movie.video_path,
           data_path_index: movie.data_path_index || 0,
           folder_updated_at: movie.folder_updated_at,
+        rating: movie.rating || 0,
           created_at: movie.created_at,
           updated_at: movie.updated_at
         }));
@@ -2189,6 +2198,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
           video_path: movie.video_path,
           data_path_index: movie.data_path_index || 0,
           folder_updated_at: movie.folder_updated_at,
+        rating: movie.rating || 0,
           created_at: movie.created_at,
           updated_at: movie.updated_at
         }));
@@ -2355,6 +2365,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         playable: movie.playable,
         video_path: movie.video_path,
         folder_updated_at: movie.folder_updated_at,
+        rating: movie.rating || 0,
         created_at: movie.created_at,
         updated_at: movie.updated_at
       }));
@@ -2544,6 +2555,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         playable: movie.playable,
         video_path: movie.video_path,
         folder_updated_at: movie.folder_updated_at,
+        rating: movie.rating || 0,
         created_at: movie.created_at,
         updated_at: movie.updated_at
       }));
@@ -2654,6 +2666,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         playable: movie.playable,
         video_path: movie.video_path,
         folder_updated_at: movie.folder_updated_at,
+        rating: movie.rating || 0,
         created_at: movie.created_at,
         updated_at: movie.updated_at
       }));
@@ -2795,6 +2808,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         video_path: movie.video_path,
         data_path_index: movie.data_path_index || 0,
         folder_updated_at: movie.folder_updated_at,
+        rating: movie.rating || 0,
         created_at: movie.created_at,
         updated_at: movie.updated_at
       }));
@@ -3034,6 +3048,7 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         video_path: movie.video_path,
         data_path_index: movie.data_path_index || 0,
         folder_updated_at: movie.folder_updated_at,
+        rating: movie.rating || 0,
         created_at: movie.created_at,
         updated_at: movie.updated_at
       }));
