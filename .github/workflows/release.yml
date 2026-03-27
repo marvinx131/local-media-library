@@ -6,45 +6,58 @@ on:
       - 'v*'
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
-    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '18'
-
-      - name: Install root dependencies
-        run: npm install
-
-      - name: Install frontend dependencies
-        run: cd frontend && npm install
-
-      - name: Build frontend
-        run: npm run build:frontend
-
-      - name: Build Electron (NSIS + Portable)
-        run: npm run build:electron
+      - run: npm install
+      - run: cd frontend && npm install
+      - run: npm run build:frontend
+      - run: npm run build:electron
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: |
-            dist/*.exe
-            dist/*.yml
+          name: windows-dist
+          path: dist/*.exe
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+      - run: npm install
+      - run: cd frontend && npm install
+      - run: npm run build:frontend
+      - name: Build Electron for macOS
+        run: npx electron-builder --mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-dist
+          path: |
+            dist/*.dmg
+            dist/*.zip
+
+  release:
+    needs: [build-windows, build-mac]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/JavLibrary-Setup-*.exe
-            dist/JavLibrary-Portable-*.exe
+            artifacts/windows-dist/*.exe
+            artifacts/mac-dist/*.dmg
+            artifacts/mac-dist/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
