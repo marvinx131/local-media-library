@@ -126,6 +126,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     save: (categories) => ipcRenderer.invoke('genreCategories:save', categories)
   },
 
+  // 播放清单
+  playlist: {
+    getCodes: () => ipcRenderer.invoke('playlist:getCodes'),
+    addCode: (code) => ipcRenderer.invoke('playlist:addCode', code),
+    addCodes: (codes) => ipcRenderer.invoke('playlist:addCodes', codes),
+    removeCode: (code) => ipcRenderer.invoke('playlist:removeCode', code),
+    clear: () => ipcRenderer.invoke('playlist:clear'),
+    getMovies: (options) => ipcRenderer.invoke('playlist:getMovies', options)
+  },
+
   // 演员头像（来自演员数据路径 Filetree.json + Content，支持简繁体匹配）
   actorAvatars: {
     getSummaryByName: (actorName) => ipcRenderer.invoke('actorAvatars:getSummaryByName', actorName),

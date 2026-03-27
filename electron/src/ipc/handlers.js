@@ -11,6 +11,7 @@ const Store = require('electron-store');
 const { getStoreName } = require('../config/storeName');
 const scanState = require('../state/scanState');
 const favoritesService = require('../services/favoritesService');
+const playlistService = require('../services/playlistService');
 const genreCategoriesService = require('../services/genreCategoriesService');
 const actorAvatarService = require('../services/actorAvatarService');
 
@@ -469,6 +470,74 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     } catch (err) {
       console.error('favorites:getMoviesByFolder', err);
       return { success: false, message: err.message, data: [], total: 0 };
+    }
+  });
+
+  // 播放清单 IPC
+  ipcMain.handle('playlist:getCodes', () => {
+    return { success: true, data: playlistService.getCodes() };
+  });
+  ipcMain.handle('playlist:addCode', (event, code) => {
+    playlistService.addCode(code);
+    return { success: true };
+  });
+  ipcMain.handle('playlist:addCodes', (event, codes) => {
+    playlistService.addCodes(codes);
+    return { success: true };
+  });
+  ipcMain.handle('playlist:removeCode', (event, code) => {
+    playlistService.removeCode(code);
+    return { success: true };
+  });
+  ipcMain.handle('playlist:clear', () => {
+    playlistService.clear();
+    return { success: true };
+  });
+  ipcMain.handle('playlist:getMovies', async (event, options = {}) => {
+    try {
+      const sequelize = getSequelize();
+      if (!sequelize || !sequelize.models?.Movie) {
+        return { success: false, message: '数据库未初始化', data: [] };
+      }
+      const codes = playlistService.getCodes();
+      if (codes.length === 0) return { success: true, data: [] };
+      const Movie = sequelize.models.Movie;
+      const filterPlayable = settingsStore.get('filterPlayable', false);
+      const where = { code: { [Op.in]: codes } };
+      if (filterPlayable) where.playable = true;
+      const include = [
+        { model: sequelize.models.Actor, through: { attributes: [] }, attributes: ['id', 'name'] },
+        { model: sequelize.models.Genre, through: { attributes: [] }, attributes: ['id', 'name'] },
+        { model: sequelize.models.Studio, attributes: ['id', 'name'], required: false }
+      ];
+      const found = await Movie.findAll({ where, include, distinct: true });
+      // 按播放清单顺序排列
+      const moviesData = codes.map(code => found.find(m => m.code === code)).filter(Boolean).map(movie => ({
+        id: movie.id,
+        title: movie.title,
+        code: movie.code,
+        runtime: movie.runtime,
+        premiered: movie.premiered,
+        director: movie.director,
+        studio_id: movie.studio_id,
+        poster_path: movie.poster_path,
+        fanart_path: movie.fanart_path,
+        nfo_path: movie.nfo_path,
+        folder_path: movie.folder_path,
+        playable: movie.playable,
+        video_path: movie.video_path,
+        data_path_index: movie.data_path_index || 0,
+        folder_updated_at: movie.folder_updated_at,
+        created_at: movie.created_at,
+        updated_at: movie.updated_at,
+        actors: movie.Actors?.map(a => ({ id: a.id, name: a.name })) || [],
+        genres: movie.Genres?.map(g => ({ id: g.id, name: g.name })) || [],
+        studio: movie.Studio ? { id: movie.Studio.id, name: movie.Studio.name } : null
+      }));
+      return { success: true, data: moviesData };
+    } catch (err) {
+      console.error('playlist:getMovies', err);
+      return { success: false, message: err.message, data: [] };
     }
   });
 

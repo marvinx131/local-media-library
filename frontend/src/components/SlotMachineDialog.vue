@@ -25,16 +25,20 @@
         />
       </div>
       <div v-if="hasStopped" class="slot-result">
-        <span class="slot-result-label">中间一行可点击进入详情：</span>
+        <div class="slot-result-header">
+          <span class="slot-result-label">抽奖结果：</span>
+          <div class="slot-result-batch-actions">
+            <el-button type="success" size="small" icon="VideoPlay" @click="playAllResults">播放全部</el-button>
+            <el-button type="primary" size="small" icon="Plus" @click="addAllToPlaylist">全部加入清单</el-button>
+          </div>
+        </div>
         <div class="slot-result-cards">
-          <a
+          <div
             v-for="m in middleMovies"
             :key="m.id"
-            href="javascript:;"
             class="slot-result-card"
-            @click="goToDetail(m)"
           >
-            <div class="slot-result-poster-wrap">
+            <div class="slot-result-poster-wrap" @click="goToDetail(m)">
               <img
                 v-if="posterUrls[m.id]"
                 :src="posterUrls[m.id]"
@@ -43,8 +47,27 @@
               />
               <div v-else class="slot-result-poster slot-result-poster-placeholder">暂无封面</div>
             </div>
-            <span class="slot-result-title">{{ m.title || m.code }}</span>
-          </a>
+            <span class="slot-result-title" @click="goToDetail(m)">{{ m.title || m.code }}</span>
+            <div class="slot-result-actions">
+              <el-button
+                v-if="m.playable"
+                type="success"
+                size="small"
+                circle
+                icon="VideoPlay"
+                @click="playVideo(m)"
+                title="播放"
+              />
+              <el-button
+                type="primary"
+                size="small"
+                circle
+                icon="Plus"
+                @click="addToPlaylist(m)"
+                title="加入播放清单"
+              />
+            </div>
+          </div>
         </div>
       </div>
       <div class="slot-actions">
@@ -61,6 +84,7 @@
 defineOptions({ name: 'SlotMachineDialog' });
 import { ref, computed, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { ElMessage } from 'element-plus';
 import { SlotMachine } from '@lucky-canvas/vue';
 
 const props = defineProps({
@@ -197,6 +221,42 @@ function goToDetail(movie) {
   router.push(`/movie/${movie.id}`);
 }
 
+async function playVideo(movie) {
+  try {
+    const result = await window.electronAPI.movie.playVideo(movie.id);
+    if (!result.success) ElMessage.error(result.message || '播放失败');
+  } catch (e) {
+    ElMessage.error('播放失败: ' + e.message);
+  }
+}
+
+async function playAllResults() {
+  for (const m of middleMovies.value) {
+    if (m.playable) {
+      await window.electronAPI.movie.playVideo(m.id).catch(() => {});
+    }
+  }
+}
+
+async function addToPlaylist(movie) {
+  try {
+    await window.electronAPI.playlist.addCode(movie.code);
+    ElMessage.success('已加入播放清单');
+  } catch (e) {
+    ElMessage.error('添加失败');
+  }
+}
+
+async function addAllToPlaylist() {
+  try {
+    const codes = middleMovies.value.map(m => m.code).filter(Boolean);
+    await window.electronAPI.playlist.addCodes(codes);
+    ElMessage.success(`已将 ${codes.length} 部影片加入播放清单`);
+  } catch (e) {
+    ElMessage.error('添加失败');
+  }
+}
+
 function playAgain() {
   fetchRandom();
 }
@@ -249,11 +309,19 @@ watch(
   background: var(--el-fill-color-lighter);
   border-radius: 8px;
 }
+.slot-result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
 .slot-result-label {
   font-size: 13px;
   color: var(--el-text-color-secondary);
-  display: block;
-  margin-bottom: 8px;
+}
+.slot-result-batch-actions {
+  display: flex;
+  gap: 6px;
 }
 .slot-result-cards {
   display: flex;
@@ -265,16 +333,9 @@ watch(
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 130px;
-  text-decoration: none;
-  color: var(--el-text-color-primary);
+  width: 150px;
   border-radius: 6px;
   overflow: hidden;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.slot-result-card:hover {
-  transform: scale(1.03);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 .slot-result-poster-wrap {
   width: 100%;
@@ -282,6 +343,12 @@ watch(
   background: var(--el-fill-color);
   border-radius: 4px;
   overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.slot-result-poster-wrap:hover {
+  transform: scale(1.03);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 .slot-result-poster {
   width: 100%;
@@ -305,6 +372,16 @@ watch(
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  cursor: pointer;
+  color: var(--el-text-color-primary);
+}
+.slot-result-title:hover {
+  color: var(--el-color-primary);
+}
+.slot-result-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 6px;
 }
 .slot-actions {
   display: flex;

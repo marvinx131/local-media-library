@@ -14,6 +14,9 @@
         <el-menu-item index="/favorites">
           <span>收藏夹</span>
         </el-menu-item>
+        <el-menu-item index="/playlist">
+          <span>播放清单</span>
+        </el-menu-item>
         <el-menu-item index="/genres">
           <span>分类</span>
         </el-menu-item>
@@ -62,7 +65,7 @@ function cacheKey(r) {
   return r.fullPath;
 }
 
-const cachedViewNames = ['MovieListPage', 'Search', 'FavoritesPage', 'ActorCatalog', 'GenreCatalog', 'StudioCatalog', 'DirectorCatalog'];
+const cachedViewNames = ['MovieListPage', 'Search', 'FavoritesPage', 'PlaylistPage', 'ActorCatalog', 'GenreCatalog', 'StudioCatalog', 'DirectorCatalog'];
 
 const menuVisible = ref(true);
 let lastScrollTop = 0;

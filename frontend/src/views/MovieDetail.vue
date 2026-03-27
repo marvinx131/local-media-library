@@ -155,6 +155,13 @@
               >
                 {{ detailFavoriteFolderIds.length > 0 ? '取消收藏' : '收藏' }}
               </el-button>
+              <el-button
+                :type="inPlaylist ? 'warning' : 'default'"
+                @click="togglePlaylist"
+                :icon="inPlaylist ? Check : Plus"
+              >
+                {{ inPlaylist ? '已在清单' : '加入清单' }}
+              </el-button>
               <el-button type="primary" @click="editMovie" icon="Edit">编辑</el-button>
               <el-button 
                 @click="openFileLocation" 
@@ -384,7 +391,7 @@ defineOptions({ name: 'MovieDetail' });
 import { ref, onMounted, computed, onBeforeMount, onBeforeUnmount, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { VideoPlay, FolderOpened, DocumentCopy, Edit, Star, StarFilled } from '@element-plus/icons-vue';
+import { VideoPlay, FolderOpened, DocumentCopy, Edit, Star, StarFilled, Check, Plus } from '@element-plus/icons-vue';
 import { loadImage as loadImageWithPriority, resumeBackgroundLoading } from '../utils/imageLoader';
 import ThemeSwitch from '../components/ThemeSwitch.vue';
 import FavoriteFoldersDialog from '../components/FavoriteFoldersDialog.vue';
@@ -410,6 +417,7 @@ const previewCurrentIndex = ref(0);
 const editDialogVisible = ref(false);
 const favoriteDialogVisible = ref(false);
 const detailFavoriteFolderIds = ref([]);
+const inPlaylist = ref(false);
 
 /** 仅当存在多于一张图（详情图 + 至少一张 extrafanart）时展示预览图区域 */
 const hasPreviewImages = computed(() => {
@@ -527,6 +535,13 @@ const loadMovie = async () => {
           detailFavoriteFolderIds.value = (favRes?.success && Array.isArray(favRes.data)) ? favRes.data : [];
         } catch (_) {
           detailFavoriteFolderIds.value = [];
+        }
+        // 检查是否在播放清单中
+        try {
+          const plRes = await window.electronAPI.playlist.getCodes();
+          inPlaylist.value = (plRes?.success && Array.isArray(plRes.data)) ? plRes.data.includes(result.data.code) : false;
+        } catch (_) {
+          inPlaylist.value = false;
         }
       }
     } else {
@@ -759,6 +774,23 @@ const playVideo = async () => {
     resumeBackgroundLoading();
   }
 };
+
+async function togglePlaylist() {
+  if (!movie.value?.code) return;
+  try {
+    if (inPlaylist.value) {
+      await window.electronAPI.playlist.removeCode(movie.value.code);
+      inPlaylist.value = false;
+      ElMessage.success('已从播放清单移除');
+    } else {
+      await window.electronAPI.playlist.addCode(movie.value.code);
+      inPlaylist.value = true;
+      ElMessage.success('已加入播放清单');
+    }
+  } catch (e) {
+    ElMessage.error('操作失败');
+  }
+}
 
 function openFavoriteDialog() {
   favoriteDialogVisible.value = true;
