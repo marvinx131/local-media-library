@@ -809,10 +809,15 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         return { success: false, message: '数据库未初始化', data: null };
       }
       const Movie = sequelize.models.Movie;
+      const Genre = sequelize.models.Genre;
+      const Director = sequelize.models.Director;
+      const Studio = sequelize.models.Studio;
+      const ActorFromNfo = sequelize.models.ActorFromNfo;
+      
       const where = { playable: true };
       const include = [
-        { model: sequelize.models.ActorFromNfo, through: { attributes: [] }, attributes: ['id', 'name'], as: 'ActorsFromNfo', required: false },
-        { model: sequelize.models.Genre, through: { attributes: [] }, attributes: ['id', 'name'], required: false }
+        { model: ActorFromNfo, through: { attributes: [] }, attributes: ['id', 'name'], as: 'ActorsFromNfo', required: false },
+        { model: Genre, through: { attributes: [] }, attributes: ['id', 'name'], required: false }
       ];
 
       // 支持按 actorId 筛选
@@ -825,10 +830,38 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         include[1].required = true;
         include[1].where = { id: params.genreId };
       }
+      // 支持按 directorId 筛选
+      if (params.directorId) {
+        where.director_id = parseInt(params.directorId);
+      }
+      // 支持按 studioId 筛选
+      if (params.studioId) {
+        where.studio_id = parseInt(params.studioId);
+      }
+      // 支持按系列前缀
+      if (params.seriesPrefix && params.seriesPrefix.trim()) {
+        where.code = { [Op.like]: `${params.seriesPrefix.trim()}-%` };
+      }
+      // 支持按标题模糊搜索
+      if (params.title && params.title.trim()) {
+        where.title = { [Op.like]: `%${params.title.trim()}%` };
+      }
       // 支持按搜索关键词
       if (params.keyword && params.keyword.trim()) {
         const kw = `%${params.keyword.trim()}%`;
         where[Op.or] = [{ title: { [Op.like]: kw } }, { code: { [Op.like]: kw } }];
+      }
+      // 支持按导演名称搜索
+      if (params.director && params.director.trim()) {
+        const dir = await Director.findOne({ where: { name: { [Op.like]: `%${params.director.trim()}%` } } });
+        if (dir) where.director_id = dir.id;
+        else return { success: true, data: null };
+      }
+      // 支持按制作商名称搜索
+      if (params.studio && params.studio.trim()) {
+        const stu = await Studio.findOne({ where: { name: { [Op.like]: `%${params.studio.trim()}%` } } });
+        if (stu) where.studio_id = stu.id;
+        else return { success: true, data: null };
       }
       // 支持 filterGenres 多选
       if (Array.isArray(params.filterGenres) && params.filterGenres.length > 0) {
@@ -837,6 +870,54 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
           const movieIds = await getMovieIdsWithAllGenres(sequelize, names);
           if (movieIds && movieIds.length > 0) {
             where.id = { [Op.in]: movieIds };
+          } else {
+            return { success: true, data: null };
+          }
+        }
+      }
+      // 支持多选分类（OR 条件）
+      if (Array.isArray(params.genre) && params.genre.length > 0) {
+        const genreNames = params.genre.filter(g => g && g.trim()).map(g => g.trim());
+        if (genreNames.length > 0) {
+          const genres = await Genre.findAll({ where: { name: { [Op.in]: genreNames } }, attributes: ['id'] });
+          if (genres.length > 0) {
+            const genreIds = genres.map(g => g.id);
+            const [rows] = await sequelize.query(`SELECT DISTINCT movie_id FROM movie_genres WHERE genre_id IN (${genreIds.join(',')})`);
+            const movieIds = rows.map(r => r.movie_id);
+            if (movieIds.length > 0) {
+              if (where.id && where.id[Op.in]) {
+                const existing = new Set(where.id[Op.in]);
+                where.id = { [Op.in]: movieIds.filter(id => existing.has(id)) };
+              } else {
+                where.id = { [Op.in]: movieIds };
+              }
+            } else {
+              return { success: true, data: null };
+            }
+          } else {
+            return { success: true, data: null };
+          }
+        }
+      }
+      // 支持多选演员（OR 条件）
+      if (Array.isArray(params.actor) && params.actor.length > 0) {
+        const actorNames = params.actor.filter(a => a && a.trim()).map(a => a.trim());
+        if (actorNames.length > 0) {
+          const actors = await ActorFromNfo.findAll({ where: { name: { [Op.in]: actorNames } }, attributes: ['id'] });
+          if (actors.length > 0) {
+            const actorIds = actors.map(a => a.id);
+            const [rows] = await sequelize.query(`SELECT DISTINCT movie_id FROM movie_actors_from_nfo WHERE actor_from_nfo_id IN (${actorIds.join(',')})`);
+            const movieIds = rows.map(r => r.movie_id);
+            if (movieIds.length > 0) {
+              if (where.id && where.id[Op.in]) {
+                const existing = new Set(where.id[Op.in]);
+                where.id = { [Op.in]: movieIds.filter(id => existing.has(id)) };
+              } else {
+                where.id = { [Op.in]: movieIds };
+              }
+            } else {
+              return { success: true, data: null };
+            }
           } else {
             return { success: true, data: null };
           }

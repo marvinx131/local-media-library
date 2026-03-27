@@ -362,17 +362,54 @@ function openSlotDialog() {
 async function randomPlay() {
   randomPlaying.value = true;
   try {
-    // 根据当前页面类型构建查询参数
-    const params = { playable: true };
-    const route = router.currentRoute.value;
+    // 根据当前页面类型和筛选条件构建查询参数
+    const params = {};
     const path = route.path;
+    const type = listType.value;
     
-    if (path.startsWith('/actor/')) {
-      params.actorId = parseInt(route.params.id);
-    } else if (path.startsWith('/genre/')) {
-      params.genreId = parseInt(route.params.id);
-    } else if (path.startsWith('/search/results')) {
-      if (route.query.keyword) params.keyword = route.query.keyword;
+    // 根据页面类型设置参数
+    if (type === 'actor') {
+      const id = parseInt(route.params.id);
+      if (!isNaN(id)) params.actorId = id;
+    } else if (type === 'genre') {
+      const id = parseInt(route.params.id);
+      if (!isNaN(id)) params.genreId = id;
+    } else if (type === 'director') {
+      const id = parseInt(route.params.id);
+      if (!isNaN(id)) params.directorId = id;
+    } else if (type === 'studio') {
+      const id = parseInt(route.params.id);
+      if (!isNaN(id)) params.studioId = id;
+    } else if (type === 'series') {
+      const prefix = route.params.prefix;
+      if (prefix) params.seriesPrefix = prefix;
+    } else if (type === 'search') {
+      const q = route.query;
+      if (q.keyword) params.keyword = q.keyword;
+      if (q.type === 'advanced') {
+        if (q.title) params.title = q.title;
+        if (q.director) params.director = q.director;
+        if (q.studio) params.studio = q.studio;
+        if (q.genre) params.genre = Array.isArray(q.genre) ? q.genre : [q.genre];
+        if (q.actor) params.actor = Array.isArray(q.actor) ? q.actor : [q.actor];
+      }
+    } else if (type === 'favorite') {
+      // 收藏夹：获取该收藏夹下的所有 code
+      const folderId = route.params.id;
+      if (folderId) {
+        const res = await window.electronAPI.favorites.getMoviesByFolder(folderId, { page: 1, pageSize: 9999 });
+        if (res?.success && res.data?.length > 0) {
+          const playableMovies = res.data.filter(m => m.playable);
+          if (playableMovies.length > 0) {
+            const random = playableMovies[Math.floor(Math.random() * playableMovies.length)];
+            const playResult = await window.electronAPI.movie.playVideo(random.id);
+            if (!playResult?.success) ElMessage.error(playResult?.message || '播放失败');
+            return;
+          }
+        }
+        ElMessage.info('没有找到可播放的影片');
+        return;
+      }
     }
     
     // 添加当前筛选的分类
