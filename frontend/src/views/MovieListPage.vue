@@ -135,7 +135,12 @@
                   </span>
                 </el-tooltip>
               </div>
-              <el-button type="primary" size="small" class="lottery-btn" @click="openSlotDialog">开始抽奖</el-button>
+              <div style="display: flex; gap: 8px;">
+                <el-button type="primary" size="small" class="lottery-btn" @click="openSlotDialog">开始抽奖</el-button>
+                <el-button type="success" size="small" @click="randomPlay" :loading="randomPlaying">
+                  <el-icon style="margin-right: 4px;"><Refresh /></el-icon>随机播放
+                </el-button>
+              </div>
             </div>
           </template>
           <template v-if="listType === 'search'" #left-extra>
@@ -234,7 +239,7 @@ defineOptions({ name: 'MovieListPage' });
 import { ref, computed, onMounted, onBeforeUnmount, onActivated, onDeactivated, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { ArrowDown, ArrowUp, QuestionFilled, Edit, ZoomIn } from '@element-plus/icons-vue';
+import { ArrowDown, ArrowUp, QuestionFilled, Edit, ZoomIn, Refresh } from '@element-plus/icons-vue';
 import MovieListLayout from '../components/MovieListLayout.vue';
 import ActorAvatarPickerDialog from '../components/ActorAvatarPickerDialog.vue';
 import SlotMachineDialog from '../components/SlotMachineDialog.vue';
@@ -347,10 +352,48 @@ const showPagination = computed(() => {
 
 const currentPage = ref(1);
 const slotDialogVisible = ref(false);
+const randomPlaying = ref(false);
 const routeVersion = ref(0);
 
 function openSlotDialog() {
   slotDialogVisible.value = true;
+}
+
+async function randomPlay() {
+  randomPlaying.value = true;
+  try {
+    // 根据当前页面类型构建查询参数
+    const params = { playable: true };
+    const route = router.currentRoute.value;
+    const path = route.path;
+    
+    if (path.startsWith('/actor/')) {
+      params.actorId = parseInt(route.params.id);
+    } else if (path.startsWith('/genre/')) {
+      params.genreId = parseInt(route.params.id);
+    } else if (path.startsWith('/search/results')) {
+      if (route.query.keyword) params.keyword = route.query.keyword;
+    }
+    
+    // 添加当前筛选的分类
+    if (filterGenres.value.length > 0) {
+      params.filterGenres = filterGenres.value;
+    }
+    
+    const result = await window.electronAPI.movies.getRandomFromList(params);
+    if (result?.success && result.data?.id) {
+      const playResult = await window.electronAPI.movie.playVideo(result.data.id);
+      if (!playResult?.success) {
+        ElMessage.error(playResult?.message || '播放失败');
+      }
+    } else {
+      ElMessage.info('没有找到可播放的影片');
+    }
+  } catch (e) {
+    ElMessage.error('随机播放失败: ' + e.message);
+  } finally {
+    randomPlaying.value = false;
+  }
 }
 
 const editDisplayName = ref('');

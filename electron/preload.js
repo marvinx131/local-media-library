@@ -13,7 +13,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getSeries: (code, options) => ipcRenderer.invoke('movies:getSeries', code, options),
     getImage: (path, dataPathIndex) => ipcRenderer.invoke('movies:getImage', path, dataPathIndex),
     getDetailExtras: (id) => ipcRenderer.invoke('movies:getDetailExtras', id),
-    openFileLocation: (id) => ipcRenderer.invoke('movies:openFileLocation', id)
+    openFileLocation: (id) => ipcRenderer.invoke('movies:openFileLocation', id),
+    setRating: (movieId, rating) => ipcRenderer.invoke('movies:setRating', movieId, rating),
+    getRandomFromList: (params) => ipcRenderer.invoke('movies:getRandomFromList', params)
   },
   
   // 演员相关
@@ -109,7 +111,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // 播放相关
   movie: {
-    playVideo: (movieId) => ipcRenderer.invoke('movie:playVideo', movieId)
+    playVideo: (movieId) => ipcRenderer.invoke('movie:playVideo', movieId),
+    playFile: (filePath) => ipcRenderer.invoke('movie:playFile', filePath)
   },
 
   // 收藏夹（按识别码存储，扫描不清空）
@@ -136,7 +139,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     addCodes: (codes) => ipcRenderer.invoke('playlist:addCodes', codes),
     removeCode: (code) => ipcRenderer.invoke('playlist:removeCode', code),
     clear: () => ipcRenderer.invoke('playlist:clear'),
-    getMovies: (options) => ipcRenderer.invoke('playlist:getMovies', options)
+    getMovies: (options) => ipcRenderer.invoke('playlist:getMovies', options),
+    createM3uPlaylist: () => ipcRenderer.invoke('playlist:createM3uPlaylist')
   },
 
   // 演员头像（来自演员数据路径 Filetree.json + Content，支持简繁体匹配）

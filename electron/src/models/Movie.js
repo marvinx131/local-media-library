@@ -75,6 +75,11 @@ module.exports = (sequelize) => {
       type: DataTypes.DATE,
       allowNull: true,
       comment: '作品文件夹的修改时间（用于按更新时间排序）'
+    },
+    rating: {
+      type: DataTypes.FLOAT,
+      allowNull: true,
+      comment: '用户评分，0-5，支持半星'
     }
   }, {
     tableName: 'movies',

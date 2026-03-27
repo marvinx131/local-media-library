@@ -159,9 +159,12 @@
                     filterable
                     allow-create
                     default-first-option
-                    placeholder="选择或输入分类名称"
+                    placeholder="选择分类（多选OR条件）"
                     style="width: 100%;"
                     clearable
+                    multiple
+                    collapse-tags
+                    collapse-tags-tooltip
                   >
                     <el-option
                       v-for="genre in availableGenres"
@@ -177,9 +180,12 @@
                     filterable
                     allow-create
                     default-first-option
-                    placeholder="选择或输入演员名称"
+                    placeholder="选择演员（多选OR条件）"
                     style="width: 100%;"
                     clearable
+                    multiple
+                    collapse-tags
+                    collapse-tags-tooltip
                   >
                     <el-option
                       v-for="actor in availableActors"
@@ -263,8 +269,8 @@ const advancedForm = ref({
   dateRange: null,
   director: '',
   studio: '',
-  genre: '',
-  actor: ''
+  genre: [],
+  actor: []
 });
 
 const availableDirectors = ref([]);
@@ -475,8 +481,8 @@ const handleAdvancedSearch = async () => {
   const hasDateRange = advancedForm.value.dateRange && Array.isArray(advancedForm.value.dateRange) && advancedForm.value.dateRange.length === 2;
   const hasDirector = advancedForm.value.director && advancedForm.value.director.trim() !== '';
   const hasStudio = advancedForm.value.studio && advancedForm.value.studio.trim() !== '';
-  const hasGenre = advancedForm.value.genre && advancedForm.value.genre.trim() !== '';
-  const hasActor = advancedForm.value.actor && advancedForm.value.actor.trim() !== '';
+  const hasGenre = Array.isArray(advancedForm.value.genre) && advancedForm.value.genre.length > 0;
+  const hasActor = Array.isArray(advancedForm.value.actor) && advancedForm.value.actor.length > 0;
   
   if (!hasTitle && !hasDateRange && !hasDirector && !hasStudio && !hasGenre && !hasActor) {
     ElMessage.warning('请至少填写一个搜索条件');
@@ -501,10 +507,10 @@ const handleAdvancedSearch = async () => {
       params.studio = advancedForm.value.studio.trim();
     }
     if (hasGenre) {
-      params.genre = advancedForm.value.genre.trim();
+      params.genre = advancedForm.value.genre.filter(g => g && g.trim()).map(g => g.trim());
     }
     if (hasActor) {
-      params.actor = advancedForm.value.actor.trim();
+      params.actor = advancedForm.value.actor.filter(a => a && a.trim()).map(a => a.trim());
     }
     
     const result = await window.electronAPI.search.advanced(params);
@@ -543,8 +549,8 @@ const resetAdvancedForm = () => {
     dateRange: null,
     director: '',
     studio: '',
-    genre: '',
-    actor: ''
+    genre: [],
+    actor: []
   };
 };
 

@@ -59,6 +59,17 @@
               <el-descriptions-item label="片长">
                 {{ movie.runtime ? movie.runtime + ' 分钟' : '未知' }}
               </el-descriptions-item>
+              <el-descriptions-item label="评分">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <el-rate
+                    v-model="movieRating"
+                    :allow-half="true"
+                    :colors="['#99A9BF', '#F7BA2A', '#FF9900']"
+                    @change="onRatingChange"
+                  />
+                  <span v-if="movieRating > 0" style="color: #909399; font-size: 13px;">{{ movieRating.toFixed(1) }}</span>
+                </div>
+              </el-descriptions-item>
               <el-descriptions-item label="演员">
                 <div v-if="movie.actors && movie.actors.length > 0" class="actor-list-wrap">
                   <template v-if="movie.actors.some(a => a.avatar?.hasAvatar)">
@@ -409,6 +420,7 @@ const movieId = computed(() => {
 
 const loading = ref(true);
 const movie = ref(null);
+const movieRating = ref(0);
 const posterUrl = ref('');
 const detailExtras = ref({ originalplot: null, previewImagePaths: [] });
 const previewImageUrls = ref([]);
@@ -493,6 +505,7 @@ const loadMovie = async () => {
     const result = await window.electronAPI.movies.getById(movieId.value);
     if (result && result.success) {
       movie.value = result.data;
+      movieRating.value = result.data.rating || 0;
       const dataPathIndex = result.data.data_path_index || 0;
       // 使用优先级加载主图
       const imagePath = result.data.fanart_path || result.data.poster_path;
@@ -789,6 +802,18 @@ async function togglePlaylist() {
     }
   } catch (e) {
     ElMessage.error('操作失败');
+  }
+}
+
+async function onRatingChange(val) {
+  if (!movie.value?.id) return;
+  try {
+    const res = await window.electronAPI.movies.setRating(movie.value.id, val);
+    if (!res?.success) {
+      ElMessage.error('保存评分失败');
+    }
+  } catch (e) {
+    ElMessage.error('保存评分失败: ' + e.message);
   }
 }
 

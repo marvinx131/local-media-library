@@ -122,10 +122,19 @@ async function playVideo(movie) {
 }
 
 async function playAll() {
-  for (const m of movies.value) {
-    if (m.playable) {
-      await window.electronAPI.movie.playVideo(m.id).catch(() => {});
+  try {
+    const result = await window.electronAPI.playlist.createM3uPlaylist();
+    if (!result?.success) {
+      ElMessage.error(result?.message || '创建播放列表失败');
+      return;
     }
+    ElMessage.info('正在打开播放器...');
+    const playResult = await window.electronAPI.movie.playFile(result.path);
+    if (!playResult?.success) {
+      ElMessage.error(playResult?.message || '播放失败');
+    }
+  } catch (e) {
+    ElMessage.error('播放失败: ' + e.message);
   }
 }
 

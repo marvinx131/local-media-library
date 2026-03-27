@@ -102,11 +102,57 @@ function getCount() {
   return read().items.length;
 }
 
+/** 生成 m3u 播放列表文件，返回文件路径 */
+async function createM3uPlaylist() {
+  const { app } = require('electron');
+  const { getSequelize } = require('../config/database');
+  const { getDataPaths } = require('../config/paths');
+
+  const codes = getCodes();
+  if (codes.length === 0) return { success: false, message: '播放清单为空' };
+
+  const sequelize = getSequelize();
+  if (!sequelize || !sequelize.models?.Movie) {
+    return { success: false, message: '数据库未初始化' };
+  }
+
+  const Movie = sequelize.models.Movie;
+  const { Op } = require('sequelize');
+  const movies = await Movie.findAll({
+    where: { code: { [Op.in]: codes }, playable: true },
+    attributes: ['code', 'video_path', 'data_path_index']
+  });
+
+  if (movies.length === 0) return { success: false, message: '没有可播放的影片' };
+
+  const dataPaths = getDataPaths();
+  if (!dataPaths || dataPaths.length === 0) return { success: false, message: '数据路径未设置' };
+
+  const lines = ['#EXTM3U'];
+  for (const code of codes) {
+    const movie = movies.find(m => m.code === code);
+    if (!movie || !movie.video_path) continue;
+    const dp = dataPaths[movie.data_path_index || 0] || dataPaths[0];
+    const fullPath = path.join(dp, movie.video_path);
+    if (fs.existsSync(fullPath)) {
+      lines.push(`#EXTINF:-1,${code}`);
+      lines.push(fullPath);
+    }
+  }
+
+  if (lines.length <= 1) return { success: false, message: '没有找到可播放的视频文件' };
+
+  const m3uPath = path.join(app.getPath('temp'), `playlist-${Date.now()}.m3u`);
+  fs.writeFileSync(m3uPath, lines.join('\n'), 'utf-8');
+  return { success: true, path: m3uPath };
+}
+
 module.exports = {
   getCodes,
   addCode,
   addCodes,
   removeCode,
   clear,
-  getCount
+  getCount,
+  createM3uPlaylist
 };
