@@ -12,6 +12,7 @@ const { getStoreName } = require('../config/storeName');
 const scanState = require('../state/scanState');
 const favoritesService = require('../services/favoritesService');
 const playlistService = require('../services/playlistService');
+const playHistoryService = require('../services/playHistoryService');
 const genreCategoriesService = require('../services/genreCategoriesService');
 const actorAvatarService = require('../services/actorAvatarService');
 
@@ -333,6 +334,9 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         return { success: false, message: '该影片不可播放' };
       }
 
+      // 记录播放历史
+      playHistoryService.recordPlay(movie.code, movie.title);
+
       // 根据 data_path_index 获取对应的数据路径
       const dataPaths = getDataPaths();
       if (!dataPaths || dataPaths.length === 0) {
@@ -612,6 +616,23 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
       console.error('playlist:getMovies', err);
       return { success: false, message: err.message, data: [] };
     }
+  });
+
+  // 播放历史 IPC
+  ipcMain.handle('playHistory:getAll', () => {
+    return { success: true, data: playHistoryService.getAll() };
+  });
+  ipcMain.handle('playHistory:remove', (event, code) => {
+    playHistoryService.remove(code);
+    return { success: true };
+  });
+  ipcMain.handle('playHistory:clearOlderThan', (event, days) => {
+    playHistoryService.clearOlderThan(days);
+    return { success: true };
+  });
+  ipcMain.handle('playHistory:clearAll', () => {
+    playHistoryService.clearAll();
+    return { success: true };
   });
 
   // 影片相关IPC(暂时返回空实现,后续完善)

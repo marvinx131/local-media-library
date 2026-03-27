@@ -1,5 +1,5 @@
-appId: com.javlibrary.app
-productName: JavLibrary
+appId: com.local-media-library.app
+productName: LocalMediaLibrary
 directories:
   buildResources: build
   output: dist

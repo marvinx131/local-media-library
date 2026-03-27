@@ -2,10 +2,9 @@ const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const { session } = require('electron');
 const path = require('path');
 
-// 测试包：在 ready 前将 userData 指向带 -test 后缀的目录，与正式版数据隔离
-if (app.getName() === 'JavLibrary_beta') {
-  app.setPath('userData', path.join(app.getPath('appData'), 'JavLibrary-test'));
-}
+// 将 userData 指向程序所在目录下的 data 文件夹，便携化存储
+const userDataPath = path.join(path.dirname(app.getPath('exe')), 'data');
+app.setPath('userData', userDataPath);
 
 // 添加错误处理
 process.on('uncaughtException', (error) => {

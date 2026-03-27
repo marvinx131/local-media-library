@@ -143,6 +143,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     createM3uPlaylist: () => ipcRenderer.invoke('playlist:createM3uPlaylist')
   },
 
+  // 播放历史
+  playHistory: {
+    getAll: () => ipcRenderer.invoke('playHistory:getAll'),
+    remove: (code) => ipcRenderer.invoke('playHistory:remove', code),
+    clearOlderThan: (days) => ipcRenderer.invoke('playHistory:clearOlderThan', days),
+    clearAll: () => ipcRenderer.invoke('playHistory:clearAll')
+  },
+
   // 演员头像（来自演员数据路径 Filetree.json + Content，支持简繁体匹配）
   actorAvatars: {
     getSummaryByName: (actorName) => ipcRenderer.invoke('actorAvatars:getSummaryByName', actorName),
