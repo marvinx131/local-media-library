@@ -69,7 +69,7 @@
         :style="posterWaterfallStyle"
       >
         <div
-          v-for="movie in movies"
+          v-for="(movie, index) in movies"
           :key="movie.id"
           class="poster-waterfall-item"
           :style="posterItemStyle"
@@ -79,7 +79,7 @@
         >
           <div class="poster-waterfall-img-wrap" :style="posterWrapStyle">
             <el-image
-              :src="imageCache?.[getImageCacheKey(movie?.poster_path, movie?.data_path_index)] || ''"
+              :src="getPosterSrc(movie, index)"
               fit="cover"
               class="poster-waterfall-img"
               :lazy="true"
@@ -109,9 +109,9 @@
       </el-table>
 
       <!-- 图文模式：卡片网格 -->
-      <div v-else class="movies-grid">
+      <div v-else ref="moviesGridRef" class="movies-grid">
         <el-card
-          v-for="movie in movies"
+          v-for="(movie, index) in movies"
           :key="movie.id"
           class="movie-card"
           shadow="hover"
@@ -210,7 +210,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue';
 import { useElementSize } from '@vueuse/core';
 import { VideoPlay, Star, StarFilled, Plus, Check } from '@element-plus/icons-vue';
 import { getImageCacheKey } from '../utils/imageLoader';
@@ -218,8 +218,14 @@ import { getImageCacheKey } from '../utils/imageLoader';
 const BASE_COL_WIDTH = 150;
 const ASPECT_RATIO = 0.7;
 const HOVER_SCALE = 1.5;
+const THUMBNAIL_BUFFER = 80;
+const CARD_BUFFER = 80;
 const hoveredPoster = ref(null);
 const posterWaterfallRef = ref(null);
+const moviesGridRef = ref(null);
+const loadedImageKeySet = ref(new Set());
+const loadedImageSetStore = new Map();
+let imageLoadWindowRaf = 0;
 const { width: waterfallWidth } = useElementSize(posterWaterfallRef);
 
 const posterLayout = computed(() => {
@@ -264,6 +270,67 @@ function onPosterLeave() {
   hoveredPoster.value = null;
 }
 
+// ── 列表页图片懒加载 ──
+function getMovieKey(movie, index) {
+  if (movie?.id != null) return `id:${movie.id}`;
+  if (movie?.code) return `code:${movie.code}`;
+  return `idx:${index}`;
+}
+
+function getPosterSrc(movie, index) {
+  const key = getMovieKey(movie, index);
+  if (!loadedImageKeySet.value.has(key)) return '';
+  return props.imageCache?.[getImageCacheKey(movie?.poster_path, movie?.data_path_index)] || '';
+}
+
+function addLoadedImageWindow(start, end) {
+  const next = new Set(loadedImageKeySet.value);
+  for (let i = start; i < end; i++) {
+    if (props.movies[i]) next.add(getMovieKey(props.movies[i], i));
+  }
+  loadedImageKeySet.value = next;
+}
+
+function updateImageLoadWindow() {
+  const total = props.movies?.length || 0;
+  if (total === 0 || props.viewMode === 'text') return;
+
+  const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+  const viewportH = window.innerHeight;
+  const buffer = props.viewMode === 'thumbnail' ? THUMBNAIL_BUFFER : CARD_BUFFER;
+
+  const wrapEl = props.viewMode === 'thumbnail' ? posterWaterfallRef.value : moviesGridRef.value;
+  if (!wrapEl) { addLoadedImageWindow(0, Math.min(total, buffer * 2)); return; }
+
+  const rect = wrapEl.getBoundingClientRect();
+  const gridTop = rect.top + scrollTop;
+
+  if (props.viewMode === 'thumbnail') {
+    const { itemHeight, cols } = posterLayout.value;
+    if (!itemHeight || !cols) { addLoadedImageWindow(0, Math.min(total, buffer * 2)); return; }
+    const firstRow = Math.max(0, Math.floor((scrollTop - gridTop) / itemHeight));
+    const visRows = Math.ceil(viewportH / itemHeight) + 1;
+    const start = Math.max(0, firstRow * cols - buffer);
+    const end = Math.min(total, (firstRow + visRows) * cols + buffer);
+    addLoadedImageWindow(start, end);
+  } else {
+    const firstCard = wrapEl.querySelector('.movie-card');
+    const rowH = firstCard ? firstCard.getBoundingClientRect().height : 360;
+    const gap = 16;
+    const perRow = Math.max(1, Math.floor((wrapEl.clientWidth + gap) / (210 + gap)));
+    const firstRow = Math.max(0, Math.floor((scrollTop - gridTop) / (rowH + gap)));
+    const visRows = Math.ceil(viewportH / (rowH + gap)) + 1;
+    const start = Math.max(0, firstRow * perRow - buffer);
+    const end = Math.min(total, (firstRow + visRows) * perRow + buffer);
+    addLoadedImageWindow(start, end);
+  }
+}
+
+function scheduleUpdate() {
+  if (imageLoadWindowRaf) return;
+  imageLoadWindowRaf = requestAnimationFrame(() => { imageLoadWindowRaf = 0; updateImageLoadWindow(); });
+}
+
 const emit = defineEmits(['rowClick', 'update:pageSize', 'update:currentPage', 'update:sortBy', 'update:viewMode', 'playVideo', 'toggleFavorite', 'togglePlaylist']);
 
 function onPosterClick(movie) {
@@ -297,10 +364,29 @@ const props = defineProps({
 watch(
   () => props.routeVersion,
   () => {
-    // 路由发生变化时，强制关闭悬浮放大框（包括鼠标侧键返回、前进等不触发 mouseleave 的场景）
     hoveredPoster.value = null;
   }
 );
+
+watch(
+  () => [props.movies?.length, props.viewMode],
+  async () => {
+    await nextTick();
+    scheduleUpdate();
+  }
+);
+
+onMounted(() => {
+  nextTick(() => scheduleUpdate());
+  window.addEventListener('scroll', scheduleUpdate, { passive: true });
+  window.addEventListener('resize', scheduleUpdate);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', scheduleUpdate);
+  window.removeEventListener('resize', scheduleUpdate);
+  if (imageLoadWindowRaf) { cancelAnimationFrame(imageLoadWindowRaf); imageLoadWindowRaf = 0; }
+});
 
 function isFavorited(movie) {
   if (!movie?.code) return false;

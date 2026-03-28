@@ -19,6 +19,15 @@
             <div class="profile-name">{{ config.name }}</div>
           </div>
           <el-icon v-if="config.id === currentId" color="#67c23a"><Check /></el-icon>
+          <el-button
+            v-if="config.id !== currentId && configs.length > 1"
+            type="danger"
+            text
+            size="small"
+            @click.stop="deleteProfile(config)"
+          >
+            <el-icon><Delete /></el-icon>
+          </el-button>
         </div>
       </div>
 
@@ -45,8 +54,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { VideoCamera, FolderOpened, Check, Plus } from '@element-plus/icons-vue';
-import { ElMessage } from 'element-plus';
+import { VideoCamera, FolderOpened, Check, Plus, Delete } from '@element-plus/icons-vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
 
 const configs = ref([]);
 const currentId = ref('');
@@ -81,6 +90,19 @@ async function createProfile() {
   } finally {
     creating.value = false;
   }
+}
+
+async function deleteProfile(config) {
+  try {
+    await ElMessageBox.confirm(`确定删除配置「${config.name}」？配置内的数据将被清除。`, '删除确认', { type: 'warning' });
+    const result = await window.electronAPI.profiles.delete(config.id);
+    if (result.success) {
+      ElMessage.success('已删除');
+      await load();
+    } else {
+      ElMessage.error(result.message);
+    }
+  } catch (_) {}
 }
 
 onMounted(load);
