@@ -432,6 +432,14 @@ function registerSetupIpc() {
     return { needsSetup, needsPassword: !!needsPassword, configDir: firstLaunchConfig?.configDir || null, mediaDir: firstLaunchConfig?.mediaDir || null };
   });
 
+  ipcMain.handle('setup:pickDir', async () => {
+    const win = mainWindow || BrowserWindow.getFocusedWindow();
+    if (!win) return null;
+    const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'], title: '选择文件夹' });
+    if (result.canceled || !result.filePaths.length) return null;
+    return result.filePaths[0];
+  });
+
   ipcMain.handle('setup:save', async (event, configDir, mediaDir, password) => {
     try {
       fs.ensureDirSync(configDir);

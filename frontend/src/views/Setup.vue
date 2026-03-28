@@ -50,15 +50,8 @@ const saving = ref(false);
 const error = ref('');
 
 async function pickDir(field) {
-  try {
-    const result = await window.electronAPI.config.setDataPath();
-    if (result?.success && result.path) {
-      form.value[field] = result.path;
-    }
-  } catch (e) {
-    // 如果 config:setDataPath 不可用，弹出提示
-    error.value = '目录选择器不可用，请手动输入路径';
-  }
+  const dir = await window.electronAPI.setup.pickDir();
+  if (dir) form.value[field] = dir;
 }
 
 async function onSubmit() {
