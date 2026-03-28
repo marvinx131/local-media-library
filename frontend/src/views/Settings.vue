@@ -268,7 +268,6 @@ const scanStore = useScanStore();
 const dataPaths = ref([]);
 const actorDataPath = ref('');
 const autoScanOnStartup = ref(true);
-const autoScanOnStartup = ref(true);
 const configHasPassword = ref(false);
 const currentProfileName = ref('默认');
 const scanActorsLoading = ref(false);
