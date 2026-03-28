@@ -31,6 +31,8 @@
             <el-option label="按标题排序-倒序" value="title-desc" />
             <el-option label="按评分排序-正序" value="rating-asc" />
             <el-option label="按评分排序-倒序" value="rating-desc" />
+            <el-option label="按起飞次数-正序" value="takeoff-asc" />
+            <el-option label="按起飞次数-倒序" value="takeoff-desc" />
           </el-select>
           <!-- 预留左侧插槽（例如搜索结果统计文案等） -->
           <slot name="left-extra" />

@@ -70,6 +70,15 @@
                   <span v-if="movieRating > 0" style="color: #909399; font-size: 13px;">{{ movieRating.toFixed(1) }}</span>
                 </div>
               </el-descriptions-item>
+              <el-descriptions-item label="起飞次数">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <span style="font-size: 24px; font-weight: bold; color: #f56c6c;">{{ takeoffCount }}</span>
+                  <el-button type="danger" size="small" circle @click="addTakeoff">
+                    <el-icon><Plus /></el-icon>
+                  </el-button>
+                  <span style="color: #909399; font-size: 12px;">点击 + 记录一次</span>
+                </div>
+              </el-descriptions-item>
               <el-descriptions-item label="演员">
                 <div v-if="movie.actors && movie.actors.length > 0" class="actor-list-wrap">
                   <template v-if="movie.actors.some(a => a.avatar?.hasAvatar)">
@@ -421,6 +430,7 @@ const movieId = computed(() => {
 const loading = ref(true);
 const movie = ref(null);
 const movieRating = ref(0);
+const takeoffCount = ref(0);
 const posterUrl = ref('');
 const detailExtras = ref({ originalplot: null, previewImagePaths: [] });
 const previewImageUrls = ref([]);
@@ -506,6 +516,7 @@ const loadMovie = async () => {
     if (result && result.success) {
       movie.value = result.data;
       movieRating.value = result.data.rating || 0;
+      takeoffCount.value = result.data.takeoffCount || 0;
       const dataPathIndex = result.data.data_path_index || 0;
       // 使用优先级加载主图
       const imagePath = result.data.fanart_path || result.data.poster_path;
@@ -814,6 +825,19 @@ async function onRatingChange(val) {
     }
   } catch (e) {
     ElMessage.error('保存评分失败: ' + e.message);
+  }
+}
+
+async function addTakeoff() {
+  if (!movie.value?.code) return;
+  try {
+    const res = await window.electronAPI.takeoff.add(movie.value.code, movie.value.title);
+    if (res?.success) {
+      takeoffCount.value = res.count;
+      ElMessage.success('起飞 +1 ✈️');
+    }
+  } catch (e) {
+    ElMessage.error('记录失败: ' + e.message);
   }
 }
 

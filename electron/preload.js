@@ -151,6 +151,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearAll: () => ipcRenderer.invoke('playHistory:clearAll')
   },
 
+  // 起飞记录
+  takeoff: {
+    add: (code, title) => ipcRenderer.invoke('takeoff:add', code, title),
+    getCount: (code) => ipcRenderer.invoke('takeoff:getCount', code),
+    getCounts: (codes) => ipcRenderer.invoke('takeoff:getCounts', codes),
+    getAll: () => ipcRenderer.invoke('takeoff:getAll'),
+    updateNote: (id, note) => ipcRenderer.invoke('takeoff:updateNote', id, note),
+    remove: (id) => ipcRenderer.invoke('takeoff:remove', id),
+    clearAll: () => ipcRenderer.invoke('takeoff:clearAll')
+  },
+
   // 密码管理
   password: {
     verify: (pwd) => ipcRenderer.invoke('password:verify', pwd),

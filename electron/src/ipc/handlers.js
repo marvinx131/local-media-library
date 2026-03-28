@@ -13,6 +13,7 @@ const scanState = require('../state/scanState');
 const favoritesService = require('../services/favoritesService');
 const playlistService = require('../services/playlistService');
 const playHistoryService = require('../services/playHistoryService');
+const takeoffService = require('../services/takeoffService');
 const genreCategoriesService = require('../services/genreCategoriesService');
 const actorAvatarService = require('../services/actorAvatarService');
 
@@ -635,6 +636,32 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     return { success: true };
   });
 
+  // 起飞记录 IPC
+  ipcMain.handle('takeoff:add', (event, code, title) => {
+    const record = takeoffService.addTakeoff(code, title);
+    const count = takeoffService.getCount(code);
+    return { success: true, record, count };
+  });
+  ipcMain.handle('takeoff:getCount', (event, code) => {
+    return { success: true, count: takeoffService.getCount(code) };
+  });
+  ipcMain.handle('takeoff:getCounts', (event, codes) => {
+    return { success: true, counts: takeoffService.getCounts(codes || []) };
+  });
+  ipcMain.handle('takeoff:getAll', () => {
+    return { success: true, data: takeoffService.getAll() };
+  });
+  ipcMain.handle('takeoff:updateNote', (event, id, note) => {
+    return { success: takeoffService.updateNote(id, note) };
+  });
+  ipcMain.handle('takeoff:remove', (event, id) => {
+    return { success: takeoffService.remove(id) };
+  });
+  ipcMain.handle('takeoff:clearAll', () => {
+    takeoffService.clearAll();
+    return { success: true };
+  });
+
   // 影片相关IPC(暂时返回空实现,后续完善)
   ipcMain.handle('movies:getList', async (event, params = {}) => {
     try {
@@ -731,6 +758,41 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         required: false
       });
 
+      // 起飞次数排序需要特殊处理（数据在 JSON 文件中）
+      if (sortBy === 'takeoff-asc' || sortBy === 'takeoff-desc') {
+        const allMovies = await Movie.findAll({ where, include, distinct: true });
+        const codes = allMovies.map(m => m.code);
+        const counts = takeoffService.getCounts(codes);
+        const isAsc = sortBy === 'takeoff-asc';
+        allMovies.sort((a, b) => {
+          const ca = counts[a.code] || 0;
+          const cb = counts[b.code] || 0;
+          return isAsc ? ca - cb : cb - ca;
+        });
+        const total = allMovies.length;
+        const paged = allMovies.slice((page - 1) * pageSize, page * pageSize);
+        const moviesData = paged.map(movie => {
+          const movieData = {
+            id: movie.id, title: movie.title, code: movie.code,
+            runtime: movie.runtime, premiered: movie.premiered,
+            director: movie.director, studio_id: movie.studio_id,
+            poster_path: movie.poster_path, fanart_path: movie.fanart_path,
+            nfo_path: movie.nfo_path, folder_path: movie.folder_path,
+            playable: movie.playable, video_path: movie.video_path,
+            data_path_index: movie.data_path_index || 0,
+            folder_updated_at: movie.folder_updated_at,
+            rating: movie.rating || 0,
+            created_at: movie.created_at, updated_at: movie.updated_at,
+            takeoffCount: counts[movie.code] || 0
+          };
+          if (movie.Actors?.length) movieData.actors = movie.Actors.map(a => ({ id: a.id, name: a.name }));
+          if (movie.Genres?.length) movieData.genres = movie.Genres.map(g => ({ id: g.id, name: g.name }));
+          if (movie.Studio) movieData.studio = { id: movie.Studio.id, name: movie.Studio.name };
+          return movieData;
+        });
+        return { success: true, data: moviesData, total };
+      }
+
       const order = getOrderFromSortBy(sortBy);
       const { count, rows } = await Movie.findAndCountAll({
         where,
@@ -788,6 +850,12 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
 
         return movieData;
       });
+
+      // 批量获取起飞次数
+      const takeoffCounts = takeoffService.getCounts(moviesData.map(m => m.code));
+      for (const m of moviesData) {
+        m.takeoffCount = takeoffCounts[m.code] || 0;
+      }
 
       return { success: true, data: moviesData, total: count };
     } catch (error) {
@@ -1123,6 +1191,9 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
       } else {
         movieData.director = null;
       }
+
+      // 起飞次数
+      movieData.takeoffCount = takeoffService.getCount(movie.code);
 
       return { success: true, data: movieData };
     } catch (error) {

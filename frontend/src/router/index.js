@@ -32,6 +32,11 @@ const routes = [
     component: () => import('../views/PlayHistoryPage.vue')
   },
   {
+    path: '/takeoff',
+    name: 'TakeoffRecords',
+    component: () => import('../views/TakeoffRecords.vue')
+  },
+  {
     path: '/favorite/:id',
     name: 'FavoriteMovieList',
     component: () => import('../views/MovieListPage.vue')
