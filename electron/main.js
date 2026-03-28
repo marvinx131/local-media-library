@@ -2,9 +2,35 @@ const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const { session } = require('electron');
 const path = require('path');
 
-// 将 userData 指向程序所在目录下的 data 文件夹，便携化存储
-const userDataPath = path.join(path.dirname(app.getPath('exe')), 'data');
-app.setPath('userData', userDataPath);
+// 便携模式支持：优先读取 exe 同目录下的 portable.json 配置
+// portable.json 示例: { "dataDir": "D:\\MyMediaData" }
+// 或者直接放一个 portable.txt 空文件 → 数据存到 exe 同目录的 data 子目录
+{
+  const fs = require('fs-extra');
+  const exeDir = path.dirname(app.getPath('exe'));
+
+  // 方式1：portable.json 指定绝对路径
+  const jsonPath = path.join(exeDir, 'portable.json');
+  if (fs.existsSync(jsonPath)) {
+    try {
+      const cfg = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+      if (cfg.dataDir && typeof cfg.dataDir === 'string') {
+        fs.ensureDirSync(cfg.dataDir);
+        app.setPath('userData', cfg.dataDir);
+        console.log('[便携模式] portable.json → userData:', cfg.dataDir);
+      }
+    } catch (e) {
+      console.error('[便携模式] portable.json 解析失败:', e.message);
+    }
+  }
+  // 方式2：portable.txt 标记 → 数据存到 exe 同目录的 data 子目录
+  else if (fs.existsSync(path.join(exeDir, 'portable.txt'))) {
+    const dataDir = path.join(exeDir, 'data');
+    fs.ensureDirSync(dataDir);
+    app.setPath('userData', dataDir);
+    console.log('[便携模式] portable.txt → userData:', dataDir);
+  }
+}
 
 // 添加错误处理
 process.on('uncaughtException', (error) => {
@@ -173,12 +199,15 @@ async function checkAndSetDataPath() {
     return dataPath;
   }
   
+  // 优先使用已设置的 userData 路径（便携模式下 app.setPath('userData') 已生效）
+  const userDataDir = app.getPath('userData');
   const defaultDataPath = path.join(__dirname, '..', 'data');
-  if (fs.existsSync(defaultDataPath)) {
-    console.log('使用默认data路径:', defaultDataPath);
-    store.set('dataPath', defaultDataPath);
-    store.set('dataPaths', [defaultDataPath]);
-    return defaultDataPath;
+  const candidatePath = fs.existsSync(userDataDir) ? userDataDir : defaultDataPath;
+  if (fs.existsSync(candidatePath)) {
+    console.log('使用默认data路径:', candidatePath);
+    store.set('dataPath', candidatePath);
+    store.set('dataPaths', [candidatePath]);
+    return candidatePath;
   }
   
   // 如果没有默认路径，需要用户选择
@@ -235,11 +264,11 @@ async function checkAndSetDataPath() {
   } catch (error) {
     console.error('选择data路径时出错:', error);
     // 如果出错，尝试使用默认路径
-    if (fs.existsSync(defaultDataPath)) {
-      console.log('使用默认data路径作为后备:', defaultDataPath);
-      store.set('dataPath', defaultDataPath);
-      store.set('dataPaths', [defaultDataPath]);
-      return defaultDataPath;
+    if (fs.existsSync(candidatePath)) {
+      console.log('使用默认data路径作为后备:', candidatePath);
+      store.set('dataPath', candidatePath);
+      store.set('dataPaths', [candidatePath]);
+      return candidatePath;
     }
     throw error;
   } finally {

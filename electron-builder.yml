@@ -3,6 +3,7 @@ productName: LocalMediaLibrary
 directories:
   buildResources: build
   output: dist
+afterPack: ./scripts/afterPack.js
 files:
   - electron/**/*
   - frontend/dist/**/*
