@@ -2,6 +2,11 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 
 const routes = [
   {
+    path: '/startup',
+    name: 'Startup',
+    component: () => import('../views/Startup.vue')
+  },
+  {
     path: '/',
     name: 'Home',
     component: () => import('../views/MovieListPage.vue')

@@ -1,52 +1,58 @@
 <template>
   <div id="app">
-    <!-- 导航栏 -->
-    <div class="menu-container" :class="{ 'menu-hidden': !menuVisible }">
-      <el-menu
-        mode="horizontal"
-        :default-active="activeMenu"
-        router
-        class="main-menu"
-      >
-        <el-menu-item index="/">
-          <span>首页</span>
-        </el-menu-item>
-        <el-menu-item index="/favorites">
-          <span>收藏夹</span>
-        </el-menu-item>
-        <el-menu-item index="/playlist">
-          <span>播放清单</span>
-        </el-menu-item>
-        <el-menu-item index="/history">
-          <span>播放历史</span>
-        </el-menu-item>
-        <el-menu-item index="/genres">
-          <span>分类</span>
-        </el-menu-item>
-        <el-menu-item index="/actor-catalog">
-          <span>演员</span>
-        </el-menu-item>
-        <el-menu-item index="/search">
-          <span>搜索</span>
-        </el-menu-item>
-        <el-menu-item index="/actors">
-          <span>目录</span>
-        </el-menu-item>
-        <el-menu-item index="/settings">
-          <span>设置</span>
-        </el-menu-item>
-        <el-menu-item index="/about">
-          <span>关于</span>
-        </el-menu-item>
-      </el-menu>
-    </div>
-    <div class="router-view-container">
-      <router-view v-slot="{ Component, route: r }">
-        <keep-alive :max="5" :include="cachedViewNames">
-          <component :is="Component" :key="cacheKey(r)" />
-        </keep-alive>
-      </router-view>
-    </div>
+    <!-- 启动页：无导航栏 -->
+    <router-view v-if="isStartupPage" />
+
+    <!-- 正常页面 -->
+    <template v-else>
+      <!-- 导航栏 -->
+      <div class="menu-container" :class="{ 'menu-hidden': !menuVisible }">
+        <el-menu
+          mode="horizontal"
+          :default-active="activeMenu"
+          router
+          class="main-menu"
+        >
+          <el-menu-item index="/">
+            <span>首页</span>
+          </el-menu-item>
+          <el-menu-item index="/favorites">
+            <span>收藏夹</span>
+          </el-menu-item>
+          <el-menu-item index="/playlist">
+            <span>播放清单</span>
+          </el-menu-item>
+          <el-menu-item index="/history">
+            <span>播放历史</span>
+          </el-menu-item>
+          <el-menu-item index="/genres">
+            <span>分类</span>
+          </el-menu-item>
+          <el-menu-item index="/actor-catalog">
+            <span>演员</span>
+          </el-menu-item>
+          <el-menu-item index="/search">
+            <span>搜索</span>
+          </el-menu-item>
+          <el-menu-item index="/actors">
+            <span>目录</span>
+          </el-menu-item>
+          <el-menu-item index="/settings">
+            <span>设置</span>
+          </el-menu-item>
+          <el-menu-item index="/about">
+            <span>关于</span>
+          </el-menu-item>
+        </el-menu>
+      </div>
+      <div class="router-view-container">
+        <router-view v-slot="{ Component, route: r }">
+          <keep-alive :max="5" :include="cachedViewNames">
+            <component :is="Component" :key="cacheKey(r)" />
+          </keep-alive>
+        </router-view>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -59,6 +65,7 @@ import { useScanStore } from './stores/scanStore';
 const route = useRoute();
 const scanStore = useScanStore();
 const activeMenu = computed(() => route.path);
+const isStartupPage = computed(() => route.name === 'Startup');
 
 // 演员页与目录页共用 ActorCatalog，用 name 区分缓存，避免复用错实例导致显示目录数据
 function cacheKey(r) {

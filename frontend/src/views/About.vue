@@ -15,20 +15,22 @@
                 <VideoCamera />
               </el-icon>
             </div>
-            <h2 class="app-name">JavLibrary</h2>
-            <div class="version">v2.8.1</div>
+            <h2 class="app-name">Local Media Library</h2>
+            <div class="version">v2.9.0</div>
             
             <el-divider />
             
             <div class="info-section">
               <div class="info-item">
                 <span class="info-label">开发者：</span>
-                <span class="info-value">by Achaiccccc</span>
+                <span class="info-value">openclaw@mimo</span>
               </div>
               
               <div class="info-item">
                 <span class="info-label">GitHub：</span>
-                <span class="info-value info-placeholder">https://github.com/Achaiccccc/local-javlibrary</span>
+                <el-link href="https://github.com/Achaiccccc/local-media-library" target="_blank" type="primary" class="info-value">
+                  github.com/Achaiccccc/local-media-library
+                </el-link>
               </div>
               <p class="star-hint">如果觉得这个项目对你有帮助，欢迎点个 Star 支持一下。</p>
               <p class="star-hint">你的支持是作者更新维护最大的动力。</p>
@@ -62,7 +64,7 @@ import { ref } from 'vue';
 import { VideoCamera } from '@element-plus/icons-vue';
 import ThemeSwitch from '../components/ThemeSwitch.vue';
 
-const contactEmail = ref('x248336024@vip.qq.com');
+const contactEmail = ref('fork by achaiccccc');
 </script>
 
 <style scoped>

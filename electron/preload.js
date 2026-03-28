@@ -151,6 +151,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearAll: () => ipcRenderer.invoke('playHistory:clearAll')
   },
 
+  // 多配置管理
+  configProfiles: {
+    getAll: () => ipcRenderer.invoke('configProfiles:getAll'),
+    add: (name, dataDir, password) => ipcRenderer.invoke('configProfiles:add', name, dataDir, password),
+    remove: (id) => ipcRenderer.invoke('configProfiles:remove', id),
+    rename: (id, newName) => ipcRenderer.invoke('configProfiles:rename', id, newName),
+    setPassword: (id, newPassword) => ipcRenderer.invoke('configProfiles:setPassword', id, newPassword),
+    activate: (id, password) => ipcRenderer.invoke('configProfiles:activate', id, password),
+    switch: () => ipcRenderer.invoke('configProfiles:switch'),
+    getActive: () => ipcRenderer.invoke('configProfiles:getActive')
+  },
+
   // 演员头像（来自演员数据路径 Filetree.json + Content，支持简繁体匹配）
   actorAvatars: {
     getSummaryByName: (actorName) => ipcRenderer.invoke('actorAvatars:getSummaryByName', actorName),

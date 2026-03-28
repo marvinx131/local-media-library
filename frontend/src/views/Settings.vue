@@ -58,6 +58,24 @@
             </el-form-item>
           </el-form>
         </el-card>
+
+        <!-- 多配置管理 -->
+        <el-card style="margin-top: 20px;">
+          <template #header>
+            <span>多配置管理</span>
+          </template>
+          <el-form label-width="120px">
+            <el-form-item label="当前配置">
+              <span>{{ activeConfigName || '默认' }}</span>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="warning" @click="switchConfig">切换配置</el-button>
+              <el-text type="info" size="small" style="display: block; margin-top: 4px;">
+                切换到其他配置（将重启应用，不同配置拥有独立的数据库和设置）
+              </el-text>
+            </el-form-item>
+          </el-form>
+        </el-card>
         
         <el-card style="margin-top: 20px;">
           <template #header>
@@ -232,6 +250,7 @@ const scanStore = useScanStore();
 const dataPaths = ref([]);
 const actorDataPath = ref('');
 const autoScanOnStartup = ref(true);
+const activeConfigName = ref('');
 const scanActorsLoading = ref(false);
 const scanning = ref(false);
 const syncDiffLoading = ref(false);
@@ -582,15 +601,19 @@ const scanData = async () => {
 };
 
 const goBack = () => {
-  // 统一使用浏览器历史记录返回上一页
-  // 页面状态会在目标页面的 onMounted 中自动恢复（通过 pageState 工具）
   if (window.history.length > 1) {
     router.back();
   } else {
-    // 如果没有历史记录，返回到首页
     router.push('/');
   }
 };
+
+async function switchConfig() {
+  try {
+    await ElMessageBox.confirm('切换配置将重启应用，确定继续？', '切换配置', { type: 'warning' });
+    await window.electronAPI.configProfiles.switch();
+  } catch (_) {}
+}
 
 onMounted(async () => {
   loadDataPaths();
@@ -598,6 +621,12 @@ onMounted(async () => {
   loadFilterPlayable();
   loadAutoScanOnStartup();
   loadCustomPlayerPath();
+
+  // 加载当前配置名称
+  try {
+    const active = await window.electronAPI?.configProfiles?.getActive?.();
+    if (active?.name) activeConfigName.value = active.name;
+  } catch (_) {}
 
   const status = await window.electronAPI?.system?.getScanStatus?.();
   if (status?.inProgress && status?.type) {
