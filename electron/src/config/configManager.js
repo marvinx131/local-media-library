@@ -1,7 +1,11 @@
 /**
  * 配置管理器：管理多个库配置（名称、数据目录、密码）
- * 配置列表存于 app.getPath('userData') 根目录的 config-profiles.json
- * 选中的配置写入 config-active.json，供下次启动时读取
+ * 
+ * 存储位置优先级：
+ *   便携模式（portable.txt 存在）→ 程序同目录
+ *   安装模式 → AppData/LocalMediaLibrary-configs
+ * 
+ * 数据目录默认格式：data/{配置名}/
  */
 const { app } = require('electron');
 const path = require('path');
@@ -11,16 +15,36 @@ const crypto = require('crypto');
 const CONFIG_PROFILES = 'config-profiles.json';
 const CONFIG_ACTIVE = 'config-active.json';
 
-/** 获取配置文件所在目录（始终使用默认 userData，不受便携模式影响） */
+let _cachedConfigDir = null;
+
+/**
+ * 获取配置文件所在目录
+ * 便携模式：exe 同目录
+ * 安装模式：AppData
+ */
 function getConfigDir() {
-  // 在便携模式下 app.getPath('userData') 已被修改，需要使用原始默认路径
-  // 但为了简化，直接使用当前 userData 的父级或 appData
-  // 最稳妥方案：用一个固定路径
-  const { app } = require('electron');
-  // 使用 app.getPath('home') 下的固定目录，确保跨配置共享
-  const dir = path.join(app.getPath('appData'), 'LocalMediaLibrary-configs');
-  fs.ensureDirSync(dir);
-  return dir;
+  if (_cachedConfigDir) return _cachedConfigDir;
+
+  const exeDir = path.dirname(app.getPath('exe'));
+  const portableMarker = path.join(exeDir, 'portable.txt');
+
+  if (fs.existsSync(portableMarker)) {
+    // 便携模式：配置存在 exe 同目录
+    _cachedConfigDir = exeDir;
+  } else {
+    // 安装模式：配置存在 AppData
+    _cachedConfigDir = path.join(app.getPath('appData'), 'LocalMediaLibrary-configs');
+    fs.ensureDirSync(_cachedConfigDir);
+  }
+  return _cachedConfigDir;
+}
+
+/**
+ * 获取默认数据目录（便携模式下为 exe 同目录的 data/{name}）
+ */
+function getDefaultDataDir(name) {
+  const exeDir = path.dirname(app.getPath('exe'));
+  return path.join(exeDir, 'data', name);
 }
 
 function getProfilesPath() {
@@ -38,7 +62,7 @@ function hashPassword(pwd) {
 }
 
 function verifyPassword(pwd, stored) {
-  if (!stored) return !pwd; // 无密码
+  if (!stored) return !pwd;
   if (!pwd) return false;
   const [salt, hash] = stored.split(':');
   const testHash = crypto.scryptSync(pwd, salt, 64).toString('hex');
@@ -60,21 +84,21 @@ function saveProfiles(data) {
 }
 
 module.exports = {
-  /** 获取所有配置 */
   getConfigs() {
     return loadProfiles().configs;
   },
 
-  /** 添加配置 */
   addConfig(name, dataDir, password) {
     const data = loadProfiles();
     if (data.configs.some(c => c.name === name)) {
       return { success: false, message: '配置名称已存在' };
     }
+    // 默认数据目录：data/{配置名}/
+    const resolvedDataDir = dataDir || getDefaultDataDir(name);
     const config = {
       id: crypto.randomUUID(),
       name,
-      dataDir: dataDir || path.join(getConfigDir(), 'profiles', name),
+      dataDir: resolvedDataDir,
       passwordHash: password ? hashPassword(password) : null,
       createdAt: Date.now()
     };
@@ -84,7 +108,6 @@ module.exports = {
     return { success: true, config: { ...config, passwordHash: undefined, hasPassword: !!config.passwordHash } };
   },
 
-  /** 删除配置 */
   removeConfig(id) {
     const data = loadProfiles();
     const idx = data.configs.findIndex(c => c.id === id);
@@ -94,7 +117,6 @@ module.exports = {
     return true;
   },
 
-  /** 重命名配置 */
   renameConfig(id, newName) {
     const data = loadProfiles();
     const config = data.configs.find(c => c.id === id);
@@ -107,7 +129,6 @@ module.exports = {
     return { success: true };
   },
 
-  /** 修改密码 */
   setPassword(id, newPassword) {
     const data = loadProfiles();
     const config = data.configs.find(c => c.id === id);
@@ -117,7 +138,6 @@ module.exports = {
     return true;
   },
 
-  /** 验证密码 */
   verifyConfigPassword(id, password) {
     const data = loadProfiles();
     const config = data.configs.find(c => c.id === id);
@@ -125,7 +145,6 @@ module.exports = {
     return verifyPassword(password, config.passwordHash);
   },
 
-  /** 激活配置（写入 active 文件，供下次启动读取） */
   activateConfig(id, password) {
     const data = loadProfiles();
     const config = data.configs.find(c => c.id === id);
@@ -137,7 +156,6 @@ module.exports = {
     return { success: true, config: { id: config.id, name: config.name, dataDir: config.dataDir, hasPassword: !!config.passwordHash } };
   },
 
-  /** 获取当前激活的配置 ID */
   getActiveConfigId() {
     try {
       const activePath = getActivePath();
@@ -149,7 +167,6 @@ module.exports = {
     return null;
   },
 
-  /** 获取激活配置的数据目录 */
   getActiveDataDir() {
     const id = this.getActiveConfigId();
     if (!id) return null;
@@ -158,7 +175,6 @@ module.exports = {
     return config ? config.dataDir : null;
   },
 
-  /** 清除激活状态，下次启动显示选择页 */
   clearActive() {
     try {
       const activePath = getActivePath();
@@ -166,15 +182,11 @@ module.exports = {
     } catch (_) {}
   },
 
-  /** 检查是否有任何配置 */
   hasConfigs() {
     return loadProfiles().configs.length > 0;
   },
 
-  /** 密码哈希工具 */
   hashPassword,
   verifyPassword,
-
-  /** 配置文件目录 */
   getConfigDir
 };

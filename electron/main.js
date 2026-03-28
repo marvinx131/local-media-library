@@ -35,9 +35,9 @@ let isPortableMode = false;
   }
 }
 
-// 多配置支持:检查是否有激活的配置(便携模式下跳过)
+// 多配置支持:检查是否有激活的配置
 const configManager = require('./src/config/configManager');
-if (!isPortableMode) {
+{
   const activeDataDir = configManager.getActiveDataDir();
   if (activeDataDir) {
     require('fs-extra').ensureDirSync(activeDataDir);
@@ -64,8 +64,8 @@ const scanState = require('./src/state/scanState');
 // 配置存储:用户数据存于 AppData,开发/正式/测试环境通过 name 区分
 const store = new Store({ name: getStoreName() });
 
-// 是否需要显示启动页（便携模式或已有激活配置时跳过）
-const showStartupPage = !isPortableMode && !configManager.getActiveConfigId();
+// 是否需要显示启动页（无激活配置时显示）
+const showStartupPage = !configManager.getActiveConfigId();
 
 let mainWindow = null;
 
