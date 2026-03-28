@@ -66,12 +66,8 @@ async function onSubmit() {
       form.value.password || null
     );
     if (result.success) {
-      ElMessage.success('配置完成');
-      // 跳转到首页并刷新，主进程会加载主应用
-      setTimeout(() => {
-        window.location.hash = '/';
-        window.location.reload();
-      }, 300);
+      ElMessage.success('配置完成，正在启动...');
+      // 主进程会自动加载主页面，前端等待即可
     } else {
       error.value = result.message || '保存失败';
     }

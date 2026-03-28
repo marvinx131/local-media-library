@@ -35,9 +35,7 @@ async function onUnlock() {
   try {
     const result = await window.electronAPI.setup.verifyPassword(password.value);
     if (result.success) {
-      // 主进程会自动启动主应用并加载首页
-      // 前端只需等待 database:ready 事件然后导航
-      window.location.hash = '/';
+      // 主进程会自动加载主页面
     } else {
       error.value = '密码错误';
     }

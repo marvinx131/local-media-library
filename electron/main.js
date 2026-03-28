@@ -447,14 +447,14 @@ function registerSetupIpc() {
       const cfg = { configDir, mediaDir: mediaDir || null };
       if (password) cfg.passwordHash = hashPwd(password);
       saveFirstLaunchConfig(cfg);
-      // 设置 userData 到配置目录
       app.setPath('userData', configDir);
-      // 写入默认影片路径
       if (mediaDir) {
         store.set('dataPaths', [mediaDir]);
         store.set('dataPath', mediaDir);
       }
       console.log('[设置完成] configDir:', configDir, 'mediaDir:', mediaDir);
+      // 启动主应用
+      startMainApp();
       return { success: true };
     } catch (e) {
       return { success: false, message: e.message };
