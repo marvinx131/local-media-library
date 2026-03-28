@@ -8,8 +8,24 @@
         </div>
       </el-header>
       <el-main class="page-theme-bg">
-        <!-- 密码保护 -->
+        <!-- 当前配置 -->
         <el-card>
+          <template #header>
+            <span>当前配置</span>
+          </template>
+          <el-form label-width="120px">
+            <el-form-item label="配置名称">
+              <span>{{ currentProfileName }}</span>
+            </el-form-item>
+            <el-form-item>
+              <el-button @click="goToProfiles">切换配置</el-button>
+              <el-button @click="createNewProfile">新建配置</el-button>
+            </el-form-item>
+          </el-form>
+        </el-card>
+
+        <!-- 密码保护 -->
+        <el-card style="margin-top: 20px;">
           <template #header>
             <span>密码保护</span>
           </template>
@@ -254,6 +270,7 @@ const actorDataPath = ref('');
 const autoScanOnStartup = ref(true);
 const autoScanOnStartup = ref(true);
 const configHasPassword = ref(false);
+const currentProfileName = ref('默认');
 const scanActorsLoading = ref(false);
 const scanning = ref(false);
 const syncDiffLoading = ref(false);
@@ -633,6 +650,24 @@ async function removePassword() {
   } catch (_) {}
 }
 
+async function goToProfiles() {
+  router.push('/profile');
+}
+
+async function createNewProfile() {
+  try {
+    const { value } = await ElMessageBox.prompt('输入新配置名称', '新建配置', { inputPlaceholder: '配置名称' });
+    if (!value?.trim()) return;
+    const result = await window.electronAPI.profiles.create(value.trim());
+    if (result.success) {
+      await ElMessageBox.confirm('配置已创建，是否立即切换？', '新建配置', { type: 'success' });
+      await window.electronAPI.profiles.switch(result.config.id);
+    } else {
+      ElMessage.error(result.message);
+    }
+  } catch (_) {}
+}
+
 onMounted(async () => {
   loadDataPaths();
   loadActorDataPath();
@@ -644,6 +679,12 @@ onMounted(async () => {
   try {
     const result = await window.electronAPI?.password?.hasPassword?.();
     configHasPassword.value = !!result?.hasPassword;
+  } catch (_) {}
+
+  // 加载当前配置名称
+  try {
+    const profile = await window.electronAPI?.profiles?.getCurrent?.();
+    if (profile?.name) currentProfileName.value = profile.name;
   } catch (_) {}
 
   const status = await window.electronAPI?.system?.getScanStatus?.();

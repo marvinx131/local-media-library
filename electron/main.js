@@ -17,6 +17,39 @@ function verifyPwd(pwd, stored) {
   return hash === crypto.scryptSync(pwd, salt, 64).toString('hex');
 }
 
+// ── 多配置管理 ──
+const PROFILES_DIR = path.join(app.getPath('appData'), 'LocalMediaLibrary', 'profiles');
+const PROFILES_FILE = path.join(PROFILES_DIR, 'profiles.json');
+
+function loadProfiles() {
+  try {
+    if (fs.existsSync(PROFILES_FILE)) {
+      return JSON.parse(fs.readFileSync(PROFILES_FILE, 'utf-8'));
+    }
+  } catch (_) {}
+  // 默认配置
+  return { configs: [{ id: 'default', name: '默认', createdAt: Date.now() }], selectedId: 'default' };
+}
+
+function saveProfiles(data) {
+  fs.ensureDirSync(PROFILES_DIR);
+  fs.writeFileSync(PROFILES_FILE, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+function getProfileDir(id) {
+  return path.join(PROFILES_DIR, id);
+}
+
+// 加载配置，设置 userData
+const profiles = loadProfiles();
+const selectedProfile = profiles.configs.find(c => c.id === profiles.selectedId) || profiles.configs[0];
+const profileDir = getProfileDir(selectedProfile.id);
+fs.ensureDirSync(profileDir);
+app.setPath('userData', profileDir);
+console.log('[配置] profile:', selectedProfile.name, '→', profileDir);
+
+const needsProfilePicker = false; // 有默认配置，不需要选择
+
 // 添加错误处理
 process.on('uncaughtException', (error) => {
   console.error('未捕获的异常:', error);
@@ -32,7 +65,7 @@ const { runStartupSync } = require('./src/services/sync');
 const { registerIpcHandlers, updateMainWindow } = require('./src/ipc/handlers');
 const scanState = require('./src/state/scanState');
 
-// 配置存储:用户数据存于 AppData,开发/正式/测试环境通过 name 区分
+// 配置存储（在 profile 的 userData 目录下）
 const store = new Store({ name: getStoreName() });
 
 let mainWindow = null;
@@ -290,6 +323,7 @@ app.whenReady().then(async () => {
   });
 
   registerPasswordIpc();
+  registerProfileIpc();
 
   // 注册业务 IPC
   try { registerIpcHandlers(mainWindow, null, store); } catch (e) { console.warn('注册IPC失败:', e.message); }
@@ -302,6 +336,18 @@ app.whenReady().then(async () => {
     setTimeout(resolve, 2000);
   });
   if (process.env.NODE_ENV === 'development') await waitForDevServer();
+
+  // 显示配置选择页
+  if (needsProfilePicker) {
+    console.log('[配置选择] 显示配置选择页');
+    if (process.env.NODE_ENV === 'development') {
+      mainWindow.loadURL('http://localhost:5173/#/profile');
+    } else {
+      mainWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'), { hash: 'profile' });
+    }
+    mainWindow.show(); mainWindow.focus();
+    return;
+  }
 
   // 检查是否设置了密码
   const hasPassword = !!store.get('passwordHash', null);
@@ -386,6 +432,77 @@ function registerPasswordIpc() {
   // 获取密码状态
   ipcMain.handle('password:hasPassword', () => {
     return { hasPassword: !!store.get('passwordHash', null) };
+  });
+}
+
+/** 注册配置管理 IPC */
+function registerProfileIpc() {
+  const { execFile } = require('child_process');
+
+  // 获取所有配置
+  ipcMain.handle('profiles:getAll', () => {
+    const data = loadProfiles();
+    return { configs: data.configs, selectedId: data.selectedId };
+  });
+
+  // 创建新配置
+  ipcMain.handle('profiles:create', (event, name) => {
+    const data = loadProfiles();
+    if (data.configs.some(c => c.name === name)) {
+      return { success: false, message: '名称已存在' };
+    }
+    const id = 'p_' + Date.now();
+    data.configs.push({ id, name, createdAt: Date.now() });
+    saveProfiles(data);
+    fs.ensureDirSync(getProfileDir(id));
+    return { success: true, config: { id, name } };
+  });
+
+  // 切换配置（重启应用）
+  ipcMain.handle('profiles:switch', (event, id) => {
+    const data = loadProfiles();
+    if (!data.configs.some(c => c.id === id)) {
+      return { success: false, message: '配置不存在' };
+    }
+    data.selectedId = id;
+    saveProfiles(data);
+    // 重启
+    execFile(process.execPath, { detached: true, stdio: 'ignore' }).unref();
+    setTimeout(() => app.quit(), 200);
+    return { success: true };
+  });
+
+  // 重命名配置
+  ipcMain.handle('profiles:rename', (event, id, newName) => {
+    const data = loadProfiles();
+    const config = data.configs.find(c => c.id === id);
+    if (!config) return { success: false, message: '配置不存在' };
+    if (data.configs.some(c => c.id !== id && c.name === newName)) {
+      return { success: false, message: '名称已存在' };
+    }
+    config.name = newName;
+    saveProfiles(data);
+    return { success: true };
+  });
+
+  // 删除配置（不能删当前选中的）
+  ipcMain.handle('profiles:delete', (event, id) => {
+    const data = loadProfiles();
+    if (data.selectedId === id) return { success: false, message: '不能删除当前配置' };
+    const idx = data.configs.findIndex(c => c.id === id);
+    if (idx === -1) return { success: false, message: '配置不存在' };
+    data.configs.splice(idx, 1);
+    saveProfiles(data);
+    // 可选：删除文件夹
+    try { fs.removeSync(getProfileDir(id)); } catch (_) {}
+    return { success: true };
+  });
+
+  // 获取当前配置信息
+  ipcMain.handle('profiles:getCurrent', () => {
+    const data = loadProfiles();
+    const current = data.configs.find(c => c.id === data.selectedId);
+    return current || data.configs[0];
   });
 }
 

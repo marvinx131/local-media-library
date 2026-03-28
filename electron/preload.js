@@ -158,6 +158,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     hasPassword: () => ipcRenderer.invoke('password:hasPassword')
   },
 
+  // 配置管理
+  profiles: {
+    getAll: () => ipcRenderer.invoke('profiles:getAll'),
+    create: (name) => ipcRenderer.invoke('profiles:create', name),
+    switch: (id) => ipcRenderer.invoke('profiles:switch', id),
+    rename: (id, name) => ipcRenderer.invoke('profiles:rename', id, name),
+    delete: (id) => ipcRenderer.invoke('profiles:delete', id),
+    getCurrent: () => ipcRenderer.invoke('profiles:getCurrent')
+  },
+
   // 演员头像（来自演员数据路径 Filetree.json + Content，支持简繁体匹配）
   actorAvatars: {
     getSummaryByName: (actorName) => ipcRenderer.invoke('actorAvatars:getSummaryByName', actorName),
