@@ -10,24 +10,36 @@ const FIRST_LAUNCH_FILE = 'first-launch.json';
 
 function getFirstLaunchConfigPath() {
   const exeDir = path.dirname(app.getPath('exe'));
+  // 便携模式检测：先用 userData 路径（启动前便携模式会设置 userData 到 exe/data 目录）
+  // 但第一次启动时 userData 可能还没改，所以还是检测 portable.txt
   if (fs.existsSync(path.join(exeDir, 'portable.txt')) || fs.existsSync(path.join(exeDir, 'portable.json'))) {
+    console.log('[配置] 便携模式，配置路径:', path.join(exeDir, FIRST_LAUNCH_FILE));
     return path.join(exeDir, FIRST_LAUNCH_FILE);
   }
   const dir = path.join(app.getPath('appData'), 'LocalMediaLibrary');
   fs.ensureDirSync(dir);
+  console.log('[配置] 安装模式，配置路径:', path.join(dir, FIRST_LAUNCH_FILE));
   return path.join(dir, FIRST_LAUNCH_FILE);
 }
 
 function loadFirstLaunchConfig() {
   const p = getFirstLaunchConfigPath();
+  console.log('[配置] 尝试读取:', p, 'exists:', fs.existsSync(p));
   if (fs.existsSync(p)) {
-    try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch (_) {}
+    try {
+      const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
+      console.log('[配置] 读取成功:', JSON.stringify(data).substring(0, 100));
+      return data;
+    } catch (e) { console.error('[配置] 解析失败:', e.message); }
   }
   return null;
 }
 
 function saveFirstLaunchConfig(cfg) {
-  fs.writeFileSync(getFirstLaunchConfigPath(), JSON.stringify(cfg, null, 2), 'utf-8');
+  const p = getFirstLaunchConfigPath();
+  console.log('[配置] 保存到:', p);
+  fs.writeFileSync(p, JSON.stringify(cfg, null, 2), 'utf-8');
+  console.log('[配置] 保存成功，文件大小:', fs.statSync(p).size);
 }
 
 function hashPwd(pwd) {
@@ -47,6 +59,8 @@ function verifyPwd(pwd, stored) {
 const firstLaunchConfig = loadFirstLaunchConfig();
 const needsSetup = !firstLaunchConfig;
 const needsPassword = firstLaunchConfig && firstLaunchConfig.passwordHash;
+console.log('[启动] needsSetup:', needsSetup, 'needsPassword:', !!needsPassword, 'exeDir:', path.dirname(app.getPath('exe')));
+console.log('[启动] configPath:', getFirstLaunchConfigPath());
 
 // 如果有配置：configDir → userData（数据库、store），mediaDir → 默认影片路径
 if (firstLaunchConfig) {
@@ -442,6 +456,7 @@ function registerSetupIpc() {
 
   ipcMain.handle('setup:save', async (event, configDir, mediaDir, password) => {
     try {
+      console.log('[setup:save] configDir:', configDir, 'mediaDir:', mediaDir, 'hasPwd:', !!password);
       fs.ensureDirSync(configDir);
       if (mediaDir) fs.ensureDirSync(mediaDir);
       const cfg = { configDir, mediaDir: mediaDir || null };
@@ -453,10 +468,10 @@ function registerSetupIpc() {
         store.set('dataPath', mediaDir);
       }
       console.log('[设置完成] configDir:', configDir, 'mediaDir:', mediaDir);
-      // 启动主应用
       startMainApp();
       return { success: true };
     } catch (e) {
+      console.error('[setup:save] 失败:', e);
       return { success: false, message: e.message };
     }
   });

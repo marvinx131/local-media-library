@@ -622,11 +622,16 @@ const goBack = () => {
 };
 
 async function changePassword() {
-  const pwd = prompt(configHasPassword.value ? '输入新密码（留空则清除）' : '设置密码（留空则不设置）');
-  if (pwd === null) return;
-  await window.electronAPI.setup.setPassword(pwd || null);
-  ElMessage.success(pwd ? '密码已设置' : '密码已移除');
-  configHasPassword.value = !!pwd;
+  try {
+    const { value } = await ElMessageBox.prompt(
+      configHasPassword.value ? '输入新密码（留空则清除）' : '设置密码（留空则不设置）',
+      configHasPassword.value ? '修改密码' : '设置密码',
+      { inputType: 'password', inputPlaceholder: '输入密码' }
+    );
+    await window.electronAPI.setup.setPassword(value || null);
+    ElMessage.success(value ? '密码已设置' : '密码已移除');
+    configHasPassword.value = !!value;
+  } catch (_) { /* 用户取消 */ }
 }
 
 async function removePassword() {
