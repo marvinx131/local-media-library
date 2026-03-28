@@ -4,58 +4,17 @@ const path = require('path');
 const fs = require('fs-extra');
 const crypto = require('crypto');
 
-// ── 首次启动配置 ──
-// 配置文件 first-launch.json 存储: configDir(应用数据) + mediaDir(影片数据目录) + password
-const FIRST_LAUNCH_FILE = 'first-launch.json';
-
-function getFirstLaunchConfigPath() {
-  // 统一存 AppData（便携版 SFX 的 exe 路径是临时目录，不可靠）
-  const dir = path.join(app.getPath('appData'), 'LocalMediaLibrary');
-  fs.ensureDirSync(dir);
-  return path.join(dir, FIRST_LAUNCH_FILE);
-}
-
-function loadFirstLaunchConfig() {
-  const p = getFirstLaunchConfigPath();
-  if (fs.existsSync(p)) {
-    try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch (e) { console.error('[配置] 解析失败:', e.message); }
-  }
-  return null;
-}
-
-function saveFirstLaunchConfig(cfg) {
-  const p = getFirstLaunchConfigPath();
-  fs.writeFileSync(p, JSON.stringify(cfg, null, 2), 'utf-8');
-}
-
+// 密码工具
 function hashPwd(pwd) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(pwd, salt, 64).toString('hex');
   return `${salt}:${hash}`;
 }
-
 function verifyPwd(pwd, stored) {
   if (!stored) return !pwd;
   if (!pwd) return false;
   const [salt, hash] = stored.split(':');
   return hash === crypto.scryptSync(pwd, salt, 64).toString('hex');
-}
-
-// 加载配置
-let firstLaunchConfig = loadFirstLaunchConfig();
-let needsSetup = !firstLaunchConfig;
-let needsPassword = !!(firstLaunchConfig && firstLaunchConfig.passwordHash);
-
-console.log('[启动] needsSetup:', needsSetup, 'needsPassword:', needsPassword);
-console.log('[启动] configPath:', getFirstLaunchConfigPath());
-
-// 如果有配置：configDir → userData（数据库、store），mediaDir → 默认影片路径
-if (firstLaunchConfig) {
-  if (firstLaunchConfig.configDir) {
-    fs.ensureDirSync(firstLaunchConfig.configDir);
-    app.setPath('userData', firstLaunchConfig.configDir);
-    console.log('[配置] configDir → userData:', firstLaunchConfig.configDir);
-  }
 }
 
 // 添加错误处理
@@ -330,11 +289,10 @@ app.whenReady().then(async () => {
     } catch (e) { callback({ error: -2 }); }
   });
 
-  registerSetupIpc();
+  registerPasswordIpc();
 
-  // 提前注册业务 IPC（设置页需要 config:* 系列接口来管理影片路径）
-  // 数据库可能未初始化，但 handler 内部会做检查
-  try { registerIpcHandlers(mainWindow, null, store); } catch (e) { console.warn('提前注册IPC失败:', e.message); }
+  // 注册业务 IPC
+  try { registerIpcHandlers(mainWindow, null, store); } catch (e) { console.warn('注册IPC失败:', e.message); }
 
   createWindow();
 
@@ -345,18 +303,9 @@ app.whenReady().then(async () => {
   });
   if (process.env.NODE_ENV === 'development') await waitForDevServer();
 
-  if (needsSetup) {
-    console.log('[首次启动] 显示设置向导');
-    if (process.env.NODE_ENV === 'development') {
-      mainWindow.loadURL('http://localhost:5173/#/setup');
-    } else {
-      mainWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'), { hash: 'setup' });
-    }
-    mainWindow.show(); mainWindow.focus();
-    return;
-  }
-
-  if (needsPassword) {
+  // 检查是否设置了密码
+  const hasPassword = !!store.get('passwordHash', null);
+  if (hasPassword) {
     console.log('[密码锁定] 显示解锁页');
     if (process.env.NODE_ENV === 'development') {
       mainWindow.loadURL('http://localhost:5173/#/unlock');
@@ -365,16 +314,6 @@ app.whenReady().then(async () => {
     }
     mainWindow.show(); mainWindow.focus();
     return;
-  }
-
-  // 有配置时，把 mediaDir 写入 store 作为默认影片路径
-  if (firstLaunchConfig?.mediaDir) {
-    const existing = store.get('dataPaths', []);
-    if (!existing || existing.length === 0) {
-      store.set('dataPaths', [firstLaunchConfig.mediaDir]);
-      store.set('dataPath', firstLaunchConfig.mediaDir);
-      console.log('[配置] mediaDir → 默认影片路径:', firstLaunchConfig.mediaDir);
-    }
   }
 
   await startMainApp();
@@ -427,79 +366,26 @@ async function startMainApp() {
   }
 }
 
-/** 注册首次启动/解锁 IPC */
-function registerSetupIpc() {
-  ipcMain.handle('setup:getStatus', () => {
-    return { needsSetup, needsPassword: !!needsPassword, configDir: firstLaunchConfig?.configDir || null, mediaDir: firstLaunchConfig?.mediaDir || null };
-  });
-
-  ipcMain.handle('setup:pickDir', async () => {
-    const win = mainWindow || BrowserWindow.getFocusedWindow();
-    if (!win) return null;
-    const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'], title: '选择文件夹' });
-    if (result.canceled || !result.filePaths.length) return null;
-    return result.filePaths[0];
-  });
-
-  ipcMain.handle('setup:save', async (event, configDir, mediaDir, password) => {
-    try {
-      console.log('[setup:save] configDir:', configDir, 'mediaDir:', mediaDir, 'hasPwd:', !!password);
-      fs.ensureDirSync(configDir);
-      if (mediaDir) fs.ensureDirSync(mediaDir);
-      const cfg = { configDir, mediaDir: mediaDir || null };
-      if (password) cfg.passwordHash = hashPwd(password);
-      saveFirstLaunchConfig(cfg);
-      app.setPath('userData', configDir);
-      if (mediaDir) {
-        store.set('dataPaths', [mediaDir]);
-        store.set('dataPath', mediaDir);
-      }
-      console.log('[设置完成] configDir:', configDir, 'mediaDir:', mediaDir);
-      startMainApp();
-      return { success: true };
-    } catch (e) {
-      console.error('[setup:save] 失败:', e);
-      return { success: false, message: e.message };
-    }
-  });
-
-  ipcMain.handle('setup:verifyPassword', (event, password) => {
-    if (!firstLaunchConfig?.passwordHash) return { success: true };
-    const ok = verifyPwd(password, firstLaunchConfig.passwordHash);
-    if (ok) {
-      // 密码正确，写入 mediaDir 并启动主应用
-      if (firstLaunchConfig.mediaDir) {
-        const existing = store.get('dataPaths', []);
-        if (!existing || existing.length === 0) {
-          store.set('dataPaths', [firstLaunchConfig.mediaDir]);
-          store.set('dataPath', firstLaunchConfig.mediaDir);
-        }
-      }
-      // 异步启动主应用
-      startMainApp();
-    }
+/** 注册密码相关 IPC */
+function registerPasswordIpc() {
+  // 验证密码
+  ipcMain.handle('password:verify', (event, password) => {
+    const stored = store.get('passwordHash', null);
+    if (!stored) return { success: true };
+    const ok = verifyPwd(password, stored);
+    if (ok) startMainApp();
     return { success: ok };
   });
 
-  ipcMain.handle('setup:setPassword', (event, newPassword) => {
-    const cfg = loadFirstLaunchConfig() || {};
-    cfg.passwordHash = newPassword ? hashPwd(newPassword) : null;
-    saveFirstLaunchConfig(cfg);
+  // 设置/修改密码
+  ipcMain.handle('password:set', (event, newPassword) => {
+    store.set('passwordHash', newPassword ? hashPwd(newPassword) : null);
     return { success: true };
   });
 
-  ipcMain.handle('setup:getConfig', () => {
-    return { configDir: firstLaunchConfig?.configDir || null, mediaDir: firstLaunchConfig?.mediaDir || null, hasPassword: !!firstLaunchConfig?.passwordHash };
-  });
-
-  ipcMain.handle('setup:reset', () => {
-    try {
-      const p = getFirstLaunchConfigPath();
-      if (fs.existsSync(p)) fs.unlinkSync(p);
-      return { success: true };
-    } catch (e) {
-      return { success: false, message: e.message };
-    }
+  // 获取密码状态
+  ipcMain.handle('password:hasPassword', () => {
+    return { hasPassword: !!store.get('passwordHash', null) };
   });
 }
 

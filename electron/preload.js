@@ -151,15 +151,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearAll: () => ipcRenderer.invoke('playHistory:clearAll')
   },
 
-  // 首次启动配置
-  setup: {
-    getStatus: () => ipcRenderer.invoke('setup:getStatus'),
-    pickDir: () => ipcRenderer.invoke('setup:pickDir'),
-    save: (configDir, mediaDir, password) => ipcRenderer.invoke('setup:save', configDir, mediaDir, password),
-    verifyPassword: (password) => ipcRenderer.invoke('setup:verifyPassword', password),
-    setPassword: (newPassword) => ipcRenderer.invoke('setup:setPassword', newPassword),
-    getConfig: () => ipcRenderer.invoke('setup:getConfig'),
-    reset: () => ipcRenderer.invoke('setup:reset')
+  // 密码管理
+  password: {
+    verify: (pwd) => ipcRenderer.invoke('password:verify', pwd),
+    set: (newPwd) => ipcRenderer.invoke('password:set', newPwd),
+    hasPassword: () => ipcRenderer.invoke('password:hasPassword')
   },
 
   // 演员头像（来自演员数据路径 Filetree.json + Content，支持简繁体匹配）

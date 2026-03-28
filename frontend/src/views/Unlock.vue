@@ -33,7 +33,7 @@ async function onUnlock() {
   error.value = '';
   verifying.value = true;
   try {
-    const result = await window.electronAPI.setup.verifyPassword(password.value);
+    const result = await window.electronAPI.password.verify(password.value);
     if (result.success) {
       // 主进程会自动加载主页面
     } else {

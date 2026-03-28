@@ -8,29 +8,20 @@
         </div>
       </el-header>
       <el-main class="page-theme-bg">
-        <!-- 当前配置信息 -->
+        <!-- 密码保护 -->
         <el-card>
           <template #header>
-            <span>配置</span>
+            <span>密码保护</span>
           </template>
           <el-form label-width="120px">
-            <el-form-item label="配置目录">
-              <span style="word-break: break-all; color: #666; font-size: 13px;">{{ configDir || '-' }}</span>
-              <el-text type="info" size="small" style="display: block;">数据库、收藏夹、播放历史等存于此处</el-text>
-            </el-form-item>
-            <el-form-item label="默认影片目录">
-              <span style="word-break: break-all; color: #666; font-size: 13px;">{{ mediaDir || '-' }}</span>
-              <el-text type="info" size="small" style="display: block;">首次设置时选择的影片根目录</el-text>
-            </el-form-item>
             <el-form-item label="密码保护">
               <span>{{ configHasPassword ? '已启用' : '未启用' }}</span>
             </el-form-item>
             <el-form-item>
               <el-button @click="changePassword">{{ configHasPassword ? '修改密码' : '设置密码' }}</el-button>
               <el-button v-if="configHasPassword" type="default" @click="removePassword">移除密码</el-button>
-              <el-button type="warning" @click="resetConfig">重置配置</el-button>
               <el-text type="info" size="small" style="display: block; margin-top: 4px;">
-                重置配置后下次启动将重新选择数据目录
+                设置密码后，每次启动需要输入密码才能进入
               </el-text>
             </el-form-item>
           </el-form>
@@ -261,8 +252,7 @@ const scanStore = useScanStore();
 const dataPaths = ref([]);
 const actorDataPath = ref('');
 const autoScanOnStartup = ref(true);
-const configDir = ref('');
-const mediaDir = ref('');
+const autoScanOnStartup = ref(true);
 const configHasPassword = ref(false);
 const scanActorsLoading = ref(false);
 const scanning = ref(false);
@@ -628,7 +618,7 @@ async function changePassword() {
       configHasPassword.value ? '修改密码' : '设置密码',
       { inputType: 'password', inputPlaceholder: '输入密码' }
     );
-    await window.electronAPI.setup.setPassword(value || null);
+    await window.electronAPI.password.set(value || null);
     ElMessage.success(value ? '密码已设置' : '密码已移除');
     configHasPassword.value = !!value;
   } catch (_) { /* 用户取消 */ }
@@ -637,19 +627,9 @@ async function changePassword() {
 async function removePassword() {
   try {
     await ElMessageBox.confirm('确定移除密码保护？', '确认', { type: 'warning' });
-    await window.electronAPI.setup.setPassword(null);
+    await window.electronAPI.password.set(null);
     configHasPassword.value = false;
     ElMessage.success('密码已移除');
-  } catch (_) {}
-}
-
-async function resetConfig() {
-  try {
-    await ElMessageBox.confirm('重置配置后下次启动将重新选择数据目录，确定继续？', '重置配置', { type: 'warning' });
-    const result = await window.electronAPI.setup.reset();
-    if (result.success) {
-      ElMessage.success('配置已重置，下次启动将重新设置');
-    }
   } catch (_) {}
 }
 
@@ -660,14 +640,10 @@ onMounted(async () => {
   loadAutoScanOnStartup();
   loadCustomPlayerPath();
 
-  // 加载当前配置信息
+  // 加载密码状态
   try {
-    const cfg = await window.electronAPI?.setup?.getConfig?.();
-    if (cfg) {
-      configDir.value = cfg.configDir || '';
-      mediaDir.value = cfg.mediaDir || '';
-      configHasPassword.value = !!cfg.hasPassword;
-    }
+    const result = await window.electronAPI?.password?.hasPassword?.();
+    configHasPassword.value = !!result?.hasPassword;
   } catch (_) {}
 
   const status = await window.electronAPI?.system?.getScanStatus?.();
