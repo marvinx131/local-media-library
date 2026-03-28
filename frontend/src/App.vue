@@ -65,7 +65,7 @@ import { useScanStore } from './stores/scanStore';
 const route = useRoute();
 const scanStore = useScanStore();
 const activeMenu = computed(() => route.path);
-const isStartupPage = computed(() => route.name === 'Startup');
+const isStartupPage = computed(() => route.name === 'Setup' || route.name === 'Unlock');
 
 // 演员页与目录页共用 ActorCatalog，用 name 区分缓存，避免复用错实例导致显示目录数据
 function cacheKey(r) {

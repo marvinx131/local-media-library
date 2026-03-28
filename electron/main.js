@@ -1,49 +1,59 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu } = require('electron');
 const { session } = require('electron');
 const path = require('path');
+const fs = require('fs-extra');
+const crypto = require('crypto');
 
-// 便携模式支持:优先读取 exe 同目录下的 portable.json 配置
-// portable.json 示例: { "dataDir": "D:\\MyMediaData" }
-// 或者直接放一个 portable.txt 空文件 → 数据存到 exe 同目录的 data 子目录
-let isPortableMode = false;
-{
-  const fs = require('fs-extra');
+// ── 首次启动配置 ──
+const FIRST_LAUNCH_FILE = 'first-launch.json';
+
+function getFirstLaunchConfigPath() {
   const exeDir = path.dirname(app.getPath('exe'));
-
-  // 方式1:portable.json 指定绝对路径
-  const jsonPath = path.join(exeDir, 'portable.json');
-  if (fs.existsSync(jsonPath)) {
-    try {
-      const cfg = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
-      if (cfg.dataDir && typeof cfg.dataDir === 'string') {
-        fs.ensureDirSync(cfg.dataDir);
-        app.setPath('userData', cfg.dataDir);
-        isPortableMode = true;
-        console.log('[便携模式] portable.json → userData:', cfg.dataDir);
-      }
-    } catch (e) {
-      console.error('[便携模式] portable.json 解析失败:', e.message);
-    }
+  // 便携模式：配置存程序目录
+  if (fs.existsSync(path.join(exeDir, 'portable.txt')) || fs.existsSync(path.join(exeDir, 'portable.json'))) {
+    return path.join(exeDir, FIRST_LAUNCH_FILE);
   }
-  // 方式2:portable.txt 标记 → 数据存到 exe 同目录的 data 子目录
-  else if (fs.existsSync(path.join(exeDir, 'portable.txt'))) {
-    const dataDir = path.join(exeDir, 'data');
-    fs.ensureDirSync(dataDir);
-    app.setPath('userData', dataDir);
-    isPortableMode = true;
-    console.log('[便携模式] portable.txt → userData:', dataDir);
-  }
+  // 安装模式：存 AppData
+  const dir = path.join(app.getPath('appData'), 'LocalMediaLibrary');
+  fs.ensureDirSync(dir);
+  return path.join(dir, FIRST_LAUNCH_FILE);
 }
 
-// 多配置支持:检查是否有激活的配置
-const configManager = require('./src/config/configManager');
-{
-  const activeDataDir = configManager.getActiveDataDir();
-  if (activeDataDir) {
-    require('fs-extra').ensureDirSync(activeDataDir);
-    app.setPath('userData', activeDataDir);
-    console.log('[多配置] 激活配置 → userData:', activeDataDir);
+function loadFirstLaunchConfig() {
+  const p = getFirstLaunchConfigPath();
+  if (fs.existsSync(p)) {
+    try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch (_) {}
   }
+  return null;
+}
+
+function saveFirstLaunchConfig(cfg) {
+  fs.writeFileSync(getFirstLaunchConfigPath(), JSON.stringify(cfg, null, 2), 'utf-8');
+}
+
+function hashPwd(pwd) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(pwd, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPwd(pwd, stored) {
+  if (!stored) return !pwd;
+  if (!pwd) return false;
+  const [salt, hash] = stored.split(':');
+  return hash === crypto.scryptSync(pwd, salt, 64).toString('hex');
+}
+
+// 检查首次启动配置
+const firstLaunchConfig = loadFirstLaunchConfig();
+const needsSetup = !firstLaunchConfig;
+const needsPassword = firstLaunchConfig && firstLaunchConfig.passwordHash;
+
+// 如果有配置，设置 userData 到数据目录
+if (firstLaunchConfig && firstLaunchConfig.dataDir) {
+  fs.ensureDirSync(firstLaunchConfig.dataDir);
+  app.setPath('userData', firstLaunchConfig.dataDir);
+  console.log('[配置] userData →', firstLaunchConfig.dataDir);
 }
 
 // 添加错误处理
@@ -63,9 +73,6 @@ const scanState = require('./src/state/scanState');
 
 // 配置存储:用户数据存于 AppData,开发/正式/测试环境通过 name 区分
 const store = new Store({ name: getStoreName() });
-
-// 是否需要显示启动页（无激活配置时显示）
-const showStartupPage = !configManager.getActiveConfigId();
 
 let mainWindow = null;
 
@@ -298,10 +305,11 @@ async function checkAndSetDataPath() {
 }
 
 // 应用准备就绪
+// 应用准备就绪
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
 
-  // 注册演员头像自定义协议,避免渲染进程直接加载 file:// 被安全策略拦截
+  // 注册演员头像自定义协议
   const { protocol } = require('electron');
   protocol.registerFileProtocol('actor-avatar', (request, callback) => {
     try {
@@ -320,136 +328,136 @@ app.whenReady().then(async () => {
     } catch (e) { callback({ error: -2 }); }
   });
 
-  // ── 注册配置管理 IPC(始终可用)──
-  registerConfigIpc();
+  registerSetupIpc();
+  createWindow();
 
-  // ── 启动页模式:无激活配置时显示配置选择页 ──
-  if (showStartupPage) {
-    console.log('[启动页] 无激活配置,显示配置选择页');
-    createWindow();
-    // 等待窗口就绪
-    await new Promise(resolve => {
-      if (mainWindow && !mainWindow.webContents.isLoading()) return resolve();
-      mainWindow?.webContents.once('did-finish-load', () => resolve());
-      setTimeout(resolve, 2000);
-    });
-    // 开发模式下等前端服务器
+  await new Promise(resolve => {
+    if (mainWindow && !mainWindow.webContents.isLoading()) return resolve();
+    mainWindow?.webContents.once('did-finish-load', () => resolve());
+    setTimeout(resolve, 2000);
+  });
+  if (process.env.NODE_ENV === 'development') await waitForDevServer();
+
+  if (needsSetup) {
+    console.log('[首次启动] 显示设置向导');
     if (process.env.NODE_ENV === 'development') {
-      await waitForDevServer();
+      mainWindow.loadURL('http://localhost:5173/#/setup');
+    } else {
+      mainWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'), { hash: 'setup' });
     }
-    // 导航到启动页(hash 路由用 #/startup)
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (process.env.NODE_ENV === 'development') {
-        mainWindow.loadURL('http://localhost:5173/#/startup');
-      } else {
-        mainWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'), { hash: 'startup' });
-      }
-      mainWindow.show();
-      mainWindow.focus();
-    }
-    return; // 不初始化数据库,等用户选择配置后重启
+    mainWindow.show(); mainWindow.focus();
+    return;
   }
 
-  // ── 正常模式:初始化数据库和业务逻辑 ──
-  // 保存当前配置信息到 store（供设置页读取），然后清除临时 active 标记
-  {
-    const activeId = configManager.getActiveConfigId();
-    if (activeId) {
-      const configs = configManager.getConfigs();
-      const cfg = configs.find(c => c.id === activeId);
-      if (cfg) {
-        store.set('currentConfigName', cfg.name);
-        store.set('currentConfigDir', cfg.dataDir);
-      }
+  if (needsPassword) {
+    console.log('[密码锁定] 显示解锁页');
+    if (process.env.NODE_ENV === 'development') {
+      mainWindow.loadURL('http://localhost:5173/#/unlock');
+    } else {
+      mainWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'), { hash: 'unlock' });
     }
+    mainWindow.show(); mainWindow.focus();
+    return;
   }
-  configManager.clearActive();
-  console.log('[正常模式] 已清除 active 标记，下次启动将显示配置选择页');
 
+  await startMainApp();
+});
+
+/** 启动主应用 */
+async function startMainApp() {
   let dataPath = null;
   try {
-    console.log('应用准备就绪,开始初始化...');
-    createWindow();
-    console.log('检查data路径...');
+    console.log('开始初始化主应用...');
     dataPath = await checkAndSetDataPath();
     if (!dataPath) { console.log('未选择data路径'); return; }
-    console.log('Data路径:', dataPath);
 
-    console.log('注册IPC处理器...');
-    try {
-      registerIpcHandlers(mainWindow, dataPath, store);
-      console.log('IPC处理器注册成功');
-    } catch (error) {
-      console.error('IPC处理器注册失败:', error);
-      throw error;
-    }
+    registerIpcHandlers(mainWindow, dataPath, store);
 
-    console.log('开始初始化数据库(后台进行)...');
+    console.log('初始化数据库...');
     initDatabase().then(async () => {
       console.log('数据库初始化完成');
       await new Promise(resolve => setTimeout(resolve, 100));
-      try {
-        const { getSequelize } = require('./src/config/database');
-        const sequelize = getSequelize();
-        if (sequelize) {
-          const [results] = await sequelize.query(`SELECT name FROM sqlite_master WHERE type='table' AND name = 'movies'`);
-          if (results.length > 0 && mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('database:ready');
-          }
-        }
-      } catch (e) {
-        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('database:ready');
-      }
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('database:ready');
       setTimeout(() => {
         const { getDataPaths } = require('./src/config/paths');
         const dataPaths = getDataPaths();
-        const autoScanOnStartup = store.get('autoScanOnStartup', true);
-        if (dataPaths && dataPaths.length > 0 && autoScanOnStartup) {
+        if (dataPaths && dataPaths.length > 0 && store.get('autoScanOnStartup', true)) {
           scanState.setScanRunning('incremental');
           runStartupSync(dataPaths, mainWindow)
-            .then(({ added, removed }) => { if (added > 0 || removed > 0) console.log('启动同步完成:新增', added, '条,删除', removed, '条'); })
-            .catch((err) => console.error('启动同步失败:', err))
+            .then(({ added, removed }) => { if (added > 0 || removed > 0) console.log('启动同步完成:', added, '新增', removed, '删除'); })
+            .catch(err => console.error('启动同步失败:', err))
             .finally(() => {
               scanState.clearScanRunning();
               if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('file:changed', { type: 'startup_sync_done' });
             });
         }
       }, 2000);
-    }).catch((error) => {
+    }).catch(error => {
       console.error('数据库初始化失败:', error);
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('database:error', error.message);
     });
 
-    // 强制显示窗口
-    if (mainWindow) {
-      mainWindow.show();
-      mainWindow.focus();
-      mainWindow.setSkipTaskbar(false);
-      [200, 500, 1000, 2000].forEach((delay) => {
-        setTimeout(() => {
-          if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
-            mainWindow.show(); mainWindow.focus(); mainWindow.moveTop();
-          }
-        }, delay);
-      });
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (process.env.NODE_ENV === 'development') {
+        mainWindow.loadURL('http://localhost:5173/');
+      } else {
+        mainWindow.loadFile(path.join(__dirname, '../frontend/dist/index.html'));
+      }
+      mainWindow.show(); mainWindow.focus();
     }
-
-    await new Promise(resolve => {
-      if (mainWindow) {
-        if (!mainWindow.webContents.isLoading()) return resolve();
-        mainWindow.webContents.once('did-finish-load', () => resolve());
-        setTimeout(resolve, 1000);
-      } else { setTimeout(resolve, 100); }
-    });
-
-    if (process.env.NODE_ENV === 'development') await waitForDevServer();
   } catch (error) {
     console.error('应用启动失败:', error);
     if (mainWindow) dialog.showErrorBox('启动错误', error.message);
   }
-});
+}
 
-/** 等待开发服务器就绪 */
+/** 注册首次启动/解锁 IPC */
+function registerSetupIpc() {
+  ipcMain.handle('setup:getStatus', () => {
+    return { needsSetup, needsPassword: !!needsPassword, dataDir: firstLaunchConfig?.dataDir || null };
+  });
+
+  ipcMain.handle('setup:save', async (event, dataDir, password) => {
+    try {
+      fs.ensureDirSync(dataDir);
+      const cfg = { dataDir };
+      if (password) cfg.passwordHash = hashPwd(password);
+      saveFirstLaunchConfig(cfg);
+      app.setPath('userData', dataDir);
+      console.log('[设置完成] userData →', dataDir);
+      return { success: true };
+    } catch (e) {
+      return { success: false, message: e.message };
+    }
+  });
+
+  ipcMain.handle('setup:verifyPassword', (event, password) => {
+    if (!firstLaunchConfig?.passwordHash) return { success: true };
+    return { success: verifyPwd(password, firstLaunchConfig.passwordHash) };
+  });
+
+  ipcMain.handle('setup:setPassword', (event, newPassword) => {
+    const cfg = loadFirstLaunchConfig() || {};
+    cfg.passwordHash = newPassword ? hashPwd(newPassword) : null;
+    saveFirstLaunchConfig(cfg);
+    return { success: true };
+  });
+
+  ipcMain.handle('setup:getConfig', () => {
+    return { dataDir: firstLaunchConfig?.dataDir || null, hasPassword: !!firstLaunchConfig?.passwordHash };
+  });
+
+  ipcMain.handle('setup:reset', () => {
+    try {
+      const p = getFirstLaunchConfigPath();
+      if (fs.existsSync(p)) fs.unlinkSync(p);
+      return { success: true };
+    } catch (e) {
+      return { success: false, message: e.message };
+    }
+  });
+}
+
 async function waitForDevServer() {
   const http = require('http');
   for (let i = 0; i < 10; i++) {
@@ -467,79 +475,5 @@ async function waitForDevServer() {
   return false;
 }
 
-/** 注册配置管理 IPC */
-function registerConfigIpc() {
-  ipcMain.handle('configProfiles:getAll', () => {
-    return configManager.getConfigs().map(c => ({ id: c.id, name: c.name, dataDir: c.dataDir, hasPassword: !!c.passwordHash, createdAt: c.createdAt }));
-  });
-
-  ipcMain.handle('configProfiles:add', (event, name, dataDir, password) => {
-    return configManager.addConfig(name, dataDir, password);
-  });
-
-  ipcMain.handle('configProfiles:remove', (event, id) => {
-    return { success: configManager.removeConfig(id) };
-  });
-
-  ipcMain.handle('configProfiles:rename', (event, id, newName) => {
-    return configManager.renameConfig(id, newName);
-  });
-
-  ipcMain.handle('configProfiles:setPassword', (event, id, newPassword) => {
-    return { success: configManager.setPassword(id, newPassword) };
-  });
-
-  ipcMain.handle('configProfiles:activate', (event, id, password) => {
-    return configManager.activateConfig(id, password);
-  });
-
-  ipcMain.handle('configProfiles:switch', async () => {
-    configManager.clearActive();
-    const { execFile } = require('child_process');
-    const exePath = process.execPath;
-    console.log('[switch] 清除配置并重启:', exePath);
-    execFile(exePath, { detached: true, stdio: 'ignore' }).unref();
-    setTimeout(() => app.quit(), 200);
-  });
-
-  // 重启进入已激活的配置（不清理 active）
-  ipcMain.handle('configProfiles:relaunch', async () => {
-    const { execFile } = require('child_process');
-    const exePath = process.execPath;
-    console.log('[relaunch] 启动新进程:', exePath);
-    execFile(exePath, { detached: true, stdio: 'ignore' }).unref();
-    setTimeout(() => app.quit(), 200);
-  });
-
-  // 从 store 读取当前配置信息（active 文件已清除，用 store 兜底）
-  ipcMain.handle('configProfiles:getCurrentFromStore', () => {
-    return {
-      name: store.get('currentConfigName', null),
-      dataDir: store.get('currentConfigDir', null)
-    };
-  });
-
-  ipcMain.handle('configProfiles:getActive', () => {
-    const id = configManager.getActiveConfigId();
-    if (!id) return null;
-    const configs = configManager.getConfigs();
-    const config = configs.find(c => c.id === id);
-    return config ? { id: config.id, name: config.name, dataDir: config.dataDir } : null;
-  });
-
-  console.log('配置管理IPC已注册');
-}
-
-// 所有窗口关闭时
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
-
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
-});
-
+app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

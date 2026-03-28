@@ -11,22 +11,21 @@
         <!-- 当前配置信息 -->
         <el-card>
           <template #header>
-            <span>当前配置</span>
+            <span>配置</span>
           </template>
           <el-form label-width="120px">
-            <el-form-item label="配置名称">
-              <span>{{ activeConfigName || '默认' }}</span>
+            <el-form-item label="数据目录">
+              <span style="word-break: break-all; color: #666; font-size: 13px;">{{ configDataDir || '-' }}</span>
             </el-form-item>
-            <el-form-item label="配置数据目录">
-              <span style="word-break: break-all; color: #666; font-size: 13px;">{{ activeConfigDir || '-' }}</span>
-              <el-text type="info" size="small" style="display: block;">
-                此目录存放该配置的数据库、收藏夹、播放历史等数据
-              </el-text>
+            <el-form-item label="密码保护">
+              <span>{{ configHasPassword ? '已启用' : '未启用' }}</span>
             </el-form-item>
             <el-form-item>
-              <el-button type="warning" @click="switchConfig">切换配置</el-button>
+              <el-button @click="changePassword">{{ configHasPassword ? '修改密码' : '设置密码' }}</el-button>
+              <el-button v-if="configHasPassword" type="default" @click="removePassword">移除密码</el-button>
+              <el-button type="warning" @click="resetConfig">重置配置</el-button>
               <el-text type="info" size="small" style="display: block; margin-top: 4px;">
-                切换到其他配置（将重启应用，不同配置拥有独立的数据库和设置）
+                重置配置后下次启动将重新选择数据目录
               </el-text>
             </el-form-item>
           </el-form>
@@ -257,8 +256,8 @@ const scanStore = useScanStore();
 const dataPaths = ref([]);
 const actorDataPath = ref('');
 const autoScanOnStartup = ref(true);
-const activeConfigName = ref('');
-const activeConfigDir = ref('');
+const configDataDir = ref('');
+const configHasPassword = ref(false);
 const scanActorsLoading = ref(false);
 const scanning = ref(false);
 const syncDiffLoading = ref(false);
@@ -616,10 +615,30 @@ const goBack = () => {
   }
 };
 
-async function switchConfig() {
+async function changePassword() {
+  const pwd = prompt(configHasPassword.value ? '输入新密码（留空则清除）' : '设置密码（留空则不设置）');
+  if (pwd === null) return;
+  await window.electronAPI.setup.setPassword(pwd || null);
+  ElMessage.success(pwd ? '密码已设置' : '密码已移除');
+  configHasPassword.value = !!pwd;
+}
+
+async function removePassword() {
   try {
-    await ElMessageBox.confirm('切换配置将重启应用，确定继续？', '切换配置', { type: 'warning' });
-    await window.electronAPI.configProfiles.switch();
+    await ElMessageBox.confirm('确定移除密码保护？', '确认', { type: 'warning' });
+    await window.electronAPI.setup.setPassword(null);
+    configHasPassword.value = false;
+    ElMessage.success('密码已移除');
+  } catch (_) {}
+}
+
+async function resetConfig() {
+  try {
+    await ElMessageBox.confirm('重置配置后下次启动将重新选择数据目录，确定继续？', '重置配置', { type: 'warning' });
+    const result = await window.electronAPI.setup.reset();
+    if (result.success) {
+      ElMessage.success('配置已重置，下次启动将重新设置');
+    }
   } catch (_) {}
 }
 
@@ -630,12 +649,13 @@ onMounted(async () => {
   loadAutoScanOnStartup();
   loadCustomPlayerPath();
 
-  // 加载当前配置名称和目录（从 store 读取，active 文件启动后已清除）
+  // 加载当前配置信息
   try {
-    const active = await window.electronAPI?.configProfiles?.getActive?.();
-    const storeInfo = await window.electronAPI?.configProfiles?.getCurrentFromStore?.();
-    activeConfigName.value = active?.name || storeInfo?.name || '';
-    activeConfigDir.value = active?.dataDir || storeInfo?.dataDir || '';
+    const cfg = await window.electronAPI?.setup?.getConfig?.();
+    if (cfg) {
+      configDataDir.value = cfg.dataDir || '';
+      configHasPassword.value = !!cfg.hasPassword;
+    }
   } catch (_) {}
 
   const status = await window.electronAPI?.system?.getScanStatus?.();
