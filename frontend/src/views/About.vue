@@ -16,7 +16,7 @@
               </el-icon>
             </div>
             <h2 class="app-name">Local Media Library</h2>
-            <div class="version">v2.9.0</div>
+            <div class="version">v1.0.0</div>
             
             <el-divider />
             

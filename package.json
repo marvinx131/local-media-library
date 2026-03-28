@@ -1,6 +1,6 @@
 {
   "name": "local-media-library",
-  "version": "2.8.1",
+  "version": "1.0.0",
   "description": "\u672c\u5730\u5f71\u89c6\u5e93\u7ba1\u7406\u7cfb\u7edf",
   "main": "electron/main.js",
   "scripts": {
