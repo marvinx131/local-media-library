@@ -9,37 +9,23 @@ const crypto = require('crypto');
 const FIRST_LAUNCH_FILE = 'first-launch.json';
 
 function getFirstLaunchConfigPath() {
-  const exeDir = path.dirname(app.getPath('exe'));
-  // 便携模式检测：先用 userData 路径（启动前便携模式会设置 userData 到 exe/data 目录）
-  // 但第一次启动时 userData 可能还没改，所以还是检测 portable.txt
-  if (fs.existsSync(path.join(exeDir, 'portable.txt')) || fs.existsSync(path.join(exeDir, 'portable.json'))) {
-    console.log('[配置] 便携模式，配置路径:', path.join(exeDir, FIRST_LAUNCH_FILE));
-    return path.join(exeDir, FIRST_LAUNCH_FILE);
-  }
+  // 统一存 AppData（便携版 SFX 的 exe 路径是临时目录，不可靠）
   const dir = path.join(app.getPath('appData'), 'LocalMediaLibrary');
   fs.ensureDirSync(dir);
-  console.log('[配置] 安装模式，配置路径:', path.join(dir, FIRST_LAUNCH_FILE));
   return path.join(dir, FIRST_LAUNCH_FILE);
 }
 
 function loadFirstLaunchConfig() {
   const p = getFirstLaunchConfigPath();
-  console.log('[配置] 尝试读取:', p, 'exists:', fs.existsSync(p));
   if (fs.existsSync(p)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(p, 'utf-8'));
-      console.log('[配置] 读取成功:', JSON.stringify(data).substring(0, 100));
-      return data;
-    } catch (e) { console.error('[配置] 解析失败:', e.message); }
+    try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch (e) { console.error('[配置] 解析失败:', e.message); }
   }
   return null;
 }
 
 function saveFirstLaunchConfig(cfg) {
   const p = getFirstLaunchConfigPath();
-  console.log('[配置] 保存到:', p);
   fs.writeFileSync(p, JSON.stringify(cfg, null, 2), 'utf-8');
-  console.log('[配置] 保存成功，文件大小:', fs.statSync(p).size);
 }
 
 function hashPwd(pwd) {
@@ -56,29 +42,11 @@ function verifyPwd(pwd, stored) {
 }
 
 // 加载配置
-const exeDir = path.dirname(app.getPath('exe'));
-const isPortable = fs.existsSync(path.join(exeDir, 'portable.txt')) || fs.existsSync(path.join(exeDir, 'portable.json'));
-
 let firstLaunchConfig = loadFirstLaunchConfig();
-let needsSetup = false;
-let needsPassword = false;
+let needsSetup = !firstLaunchConfig;
+let needsPassword = !!(firstLaunchConfig && firstLaunchConfig.passwordHash);
 
-if (isPortable) {
-  // 便携版：默认用 exe/data 作为配置和数据目录，不显示设置向导
-  if (!firstLaunchConfig) {
-    firstLaunchConfig = { configDir: path.join(exeDir, 'data'), mediaDir: path.join(exeDir, 'data') };
-    saveFirstLaunchConfig(firstLaunchConfig);
-    console.log('[便携版] 自动生成配置:', firstLaunchConfig.configDir);
-  }
-  needsSetup = false;
-  needsPassword = !!(firstLaunchConfig && firstLaunchConfig.passwordHash);
-} else {
-  // 安装版：有配置直接进，没配置显示设置向导
-  needsSetup = !firstLaunchConfig;
-  needsPassword = !!(firstLaunchConfig && firstLaunchConfig.passwordHash);
-}
-
-console.log('[启动] portable:', isPortable, 'needsSetup:', needsSetup, 'needsPassword:', needsPassword);
+console.log('[启动] needsSetup:', needsSetup, 'needsPassword:', needsPassword);
 console.log('[启动] configPath:', getFirstLaunchConfigPath());
 
 // 如果有配置：configDir → userData（数据库、store），mediaDir → 默认影片路径
