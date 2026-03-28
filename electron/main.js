@@ -481,7 +481,13 @@ function registerConfigIpc() {
   ipcMain.handle('configProfiles:switch', async () => {
     configManager.clearActive();
     app.relaunch();
-    app.exit(0);
+    setTimeout(() => app.quit(), 300);
+  });
+
+  // 重启进入已激活的配置（不清理 active）
+  ipcMain.handle('configProfiles:relaunch', async () => {
+    app.relaunch();
+    setTimeout(() => app.quit(), 300);
   });
 
   ipcMain.handle('configProfiles:getActive', () => {

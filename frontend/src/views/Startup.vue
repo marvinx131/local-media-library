@@ -152,9 +152,9 @@ async function activateAndEnter(id, password) {
     const result = await window.electronAPI.configProfiles.activate(id, password);
     if (result.success) {
       ElMessage.success('正在进入...');
-      // 触发重启
+      // 激活后重启进入配置（不清理 active）
       setTimeout(() => {
-        window.electronAPI.configProfiles.switch();
+        window.electronAPI.configProfiles.relaunch();
       }, 300);
     } else {
       passwordError.value = result.message || '操作失败';

@@ -160,6 +160,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setPassword: (id, newPassword) => ipcRenderer.invoke('configProfiles:setPassword', id, newPassword),
     activate: (id, password) => ipcRenderer.invoke('configProfiles:activate', id, password),
     switch: () => ipcRenderer.invoke('configProfiles:switch'),
+    relaunch: () => ipcRenderer.invoke('configProfiles:relaunch'),
     getActive: () => ipcRenderer.invoke('configProfiles:getActive')
   },
 
