@@ -56,10 +56,29 @@ function verifyPwd(pwd, stored) {
 }
 
 // 加载配置
-const firstLaunchConfig = loadFirstLaunchConfig();
-const needsSetup = !firstLaunchConfig;
-const needsPassword = firstLaunchConfig && firstLaunchConfig.passwordHash;
-console.log('[启动] needsSetup:', needsSetup, 'needsPassword:', !!needsPassword, 'exeDir:', path.dirname(app.getPath('exe')));
+const exeDir = path.dirname(app.getPath('exe'));
+const isPortable = fs.existsSync(path.join(exeDir, 'portable.txt')) || fs.existsSync(path.join(exeDir, 'portable.json'));
+
+let firstLaunchConfig = loadFirstLaunchConfig();
+let needsSetup = false;
+let needsPassword = false;
+
+if (isPortable) {
+  // 便携版：默认用 exe/data 作为配置和数据目录，不显示设置向导
+  if (!firstLaunchConfig) {
+    firstLaunchConfig = { configDir: path.join(exeDir, 'data'), mediaDir: path.join(exeDir, 'data') };
+    saveFirstLaunchConfig(firstLaunchConfig);
+    console.log('[便携版] 自动生成配置:', firstLaunchConfig.configDir);
+  }
+  needsSetup = false;
+  needsPassword = !!(firstLaunchConfig && firstLaunchConfig.passwordHash);
+} else {
+  // 安装版：有配置直接进，没配置显示设置向导
+  needsSetup = !firstLaunchConfig;
+  needsPassword = !!(firstLaunchConfig && firstLaunchConfig.passwordHash);
+}
+
+console.log('[启动] portable:', isPortable, 'needsSetup:', needsSetup, 'needsPassword:', needsPassword);
 console.log('[启动] configPath:', getFirstLaunchConfigPath());
 
 // 如果有配置：configDir → userData（数据库、store），mediaDir → 默认影片路径
