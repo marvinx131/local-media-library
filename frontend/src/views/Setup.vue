@@ -4,20 +4,26 @@
       <div class="setup-header">
         <el-icon :size="64" color="#409eff"><VideoCamera /></el-icon>
         <h1>Local Media Library</h1>
-        <p class="subtitle">首次启动，请选择数据存储目录</p>
+        <p class="subtitle">首次启动设置</p>
       </div>
 
       <el-card class="setup-card">
-        <el-form :model="form" label-width="80px" @submit.prevent="onSubmit">
-          <el-form-item label="数据目录" required>
-            <el-input v-model="form.dataDir" placeholder="选择或输入数据目录路径">
+        <el-form :model="form" label-width="100px" @submit.prevent="onSubmit">
+          <el-form-item label="配置目录" required>
+            <el-input v-model="form.configDir" placeholder="存放数据库、设置的目录" readonly>
               <template #append>
-                <el-button @click="chooseDir">选择</el-button>
+                <el-button @click="pickDir('configDir')">选择</el-button>
               </template>
             </el-input>
-            <el-text type="info" size="small" style="margin-top: 4px;">
-              数据库、收藏夹、播放历史等将存于此目录
-            </el-text>
+            <el-text type="info" size="small">应用配置、数据库、收藏夹等存于此处</el-text>
+          </el-form-item>
+          <el-form-item label="影片目录" required>
+            <el-input v-model="form.mediaDir" placeholder="影片文件所在的根目录" readonly>
+              <template #append>
+                <el-button @click="pickDir('mediaDir')">选择</el-button>
+              </template>
+            </el-input>
+            <el-text type="info" size="small">包含影片文件夹的根目录（可在设置中追加更多路径）</el-text>
           </el-form-item>
           <el-form-item label="密码">
             <el-input v-model="form.password" type="password" placeholder="留空则无需密码" show-password />
@@ -28,6 +34,7 @@
             </el-button>
           </el-form-item>
         </el-form>
+        <el-alert v-if="error" :title="error" type="error" show-icon :closable="false" style="margin-top: 12px;" />
       </el-card>
     </div>
   </div>
@@ -38,34 +45,45 @@ import { ref } from 'vue';
 import { VideoCamera } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 
-const form = ref({ dataDir: '', password: '' });
+const form = ref({ configDir: '', mediaDir: '', password: '' });
 const saving = ref(false);
+const error = ref('');
 
-async function chooseDir() {
-  // 通过设置页的已有 IPC 选择目录，或用 dialog
-  // 这里简单用 prompt 输入
-  const result = await window.electronAPI?.settings?.choosePlayerPath?.();
-  // 不适用，改用后端对话框 — 这里先让用户手动输入
+async function pickDir(field) {
+  try {
+    const result = await window.electronAPI.config.setDataPath();
+    if (result?.success && result.path) {
+      form.value[field] = result.path;
+    }
+  } catch (e) {
+    // 如果 config:setDataPath 不可用，弹出提示
+    error.value = '目录选择器不可用，请手动输入路径';
+  }
 }
 
 async function onSubmit() {
-  if (!form.value.dataDir.trim()) {
-    ElMessage.warning('请选择或输入数据目录');
-    return;
-  }
+  error.value = '';
+  if (!form.value.configDir.trim()) { error.value = '请选择配置目录'; return; }
+  if (!form.value.mediaDir.trim()) { error.value = '请选择影片目录'; return; }
   saving.value = true;
   try {
-    const result = await window.electronAPI.setup.save(form.value.dataDir.trim(), form.value.password || null);
+    const result = await window.electronAPI.setup.save(
+      form.value.configDir.trim(),
+      form.value.mediaDir.trim(),
+      form.value.password || null
+    );
     if (result.success) {
-      ElMessage.success('配置完成，正在启动...');
-      // 通知主进程启动主应用
+      ElMessage.success('配置完成');
+      // 跳转到首页并刷新，主进程会加载主应用
       setTimeout(() => {
         window.location.hash = '/';
         window.location.reload();
-      }, 500);
+      }, 300);
     } else {
-      ElMessage.error(result.message || '保存失败');
+      error.value = result.message || '保存失败';
     }
+  } catch (e) {
+    error.value = e.message || '保存失败';
   } finally {
     saving.value = false;
   }
@@ -74,22 +92,20 @@ async function onSubmit() {
 
 <style scoped>
 .setup-page {
-  width: 100%;
-  height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 100%; height: 100vh;
+  display: flex; align-items: center; justify-content: center;
   background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
   color: #e0e0e0;
 }
-.setup-container { width: 480px; max-width: 90vw; }
+.setup-container { width: 520px; max-width: 90vw; }
 .setup-header { text-align: center; margin-bottom: 32px; }
 .setup-header h1 { margin: 12px 0 4px; font-size: 28px; font-weight: 700; color: #fff; }
 .subtitle { color: #aaa; font-size: 14px; margin: 0; }
 .setup-card {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
   border-radius: 10px;
 }
 :deep(.el-form-item__label) { color: #ccc; }
+:deep(.el-input.is-readonly .el-input__wrapper) { background-color: rgba(255,255,255,0.04); }
 </style>

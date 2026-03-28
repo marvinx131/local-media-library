@@ -154,7 +154,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 首次启动配置
   setup: {
     getStatus: () => ipcRenderer.invoke('setup:getStatus'),
-    save: (dataDir, password) => ipcRenderer.invoke('setup:save', dataDir, password),
+    save: (configDir, mediaDir, password) => ipcRenderer.invoke('setup:save', configDir, mediaDir, password),
     verifyPassword: (password) => ipcRenderer.invoke('setup:verifyPassword', password),
     setPassword: (newPassword) => ipcRenderer.invoke('setup:setPassword', newPassword),
     getConfig: () => ipcRenderer.invoke('setup:getConfig'),

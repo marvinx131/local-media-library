@@ -14,8 +14,13 @@
             <span>配置</span>
           </template>
           <el-form label-width="120px">
-            <el-form-item label="数据目录">
-              <span style="word-break: break-all; color: #666; font-size: 13px;">{{ configDataDir || '-' }}</span>
+            <el-form-item label="配置目录">
+              <span style="word-break: break-all; color: #666; font-size: 13px;">{{ configDir || '-' }}</span>
+              <el-text type="info" size="small" style="display: block;">数据库、收藏夹、播放历史等存于此处</el-text>
+            </el-form-item>
+            <el-form-item label="默认影片目录">
+              <span style="word-break: break-all; color: #666; font-size: 13px;">{{ mediaDir || '-' }}</span>
+              <el-text type="info" size="small" style="display: block;">首次设置时选择的影片根目录</el-text>
             </el-form-item>
             <el-form-item label="密码保护">
               <span>{{ configHasPassword ? '已启用' : '未启用' }}</span>
@@ -256,7 +261,8 @@ const scanStore = useScanStore();
 const dataPaths = ref([]);
 const actorDataPath = ref('');
 const autoScanOnStartup = ref(true);
-const configDataDir = ref('');
+const configDir = ref('');
+const mediaDir = ref('');
 const configHasPassword = ref(false);
 const scanActorsLoading = ref(false);
 const scanning = ref(false);
@@ -653,7 +659,8 @@ onMounted(async () => {
   try {
     const cfg = await window.electronAPI?.setup?.getConfig?.();
     if (cfg) {
-      configDataDir.value = cfg.dataDir || '';
+      configDir.value = cfg.configDir || '';
+      mediaDir.value = cfg.mediaDir || '';
       configHasPassword.value = !!cfg.hasPassword;
     }
   } catch (_) {}

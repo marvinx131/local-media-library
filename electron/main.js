@@ -5,15 +5,14 @@ const fs = require('fs-extra');
 const crypto = require('crypto');
 
 // ── 首次启动配置 ──
+// 配置文件 first-launch.json 存储: configDir(应用数据) + mediaDir(影片数据目录) + password
 const FIRST_LAUNCH_FILE = 'first-launch.json';
 
 function getFirstLaunchConfigPath() {
   const exeDir = path.dirname(app.getPath('exe'));
-  // 便携模式：配置存程序目录
   if (fs.existsSync(path.join(exeDir, 'portable.txt')) || fs.existsSync(path.join(exeDir, 'portable.json'))) {
     return path.join(exeDir, FIRST_LAUNCH_FILE);
   }
-  // 安装模式：存 AppData
   const dir = path.join(app.getPath('appData'), 'LocalMediaLibrary');
   fs.ensureDirSync(dir);
   return path.join(dir, FIRST_LAUNCH_FILE);
@@ -44,16 +43,18 @@ function verifyPwd(pwd, stored) {
   return hash === crypto.scryptSync(pwd, salt, 64).toString('hex');
 }
 
-// 检查首次启动配置
+// 加载配置
 const firstLaunchConfig = loadFirstLaunchConfig();
 const needsSetup = !firstLaunchConfig;
 const needsPassword = firstLaunchConfig && firstLaunchConfig.passwordHash;
 
-// 如果有配置，设置 userData 到数据目录
-if (firstLaunchConfig && firstLaunchConfig.dataDir) {
-  fs.ensureDirSync(firstLaunchConfig.dataDir);
-  app.setPath('userData', firstLaunchConfig.dataDir);
-  console.log('[配置] userData →', firstLaunchConfig.dataDir);
+// 如果有配置：configDir → userData（数据库、store），mediaDir → 默认影片路径
+if (firstLaunchConfig) {
+  if (firstLaunchConfig.configDir) {
+    fs.ensureDirSync(firstLaunchConfig.configDir);
+    app.setPath('userData', firstLaunchConfig.configDir);
+    console.log('[配置] configDir → userData:', firstLaunchConfig.configDir);
+  }
 }
 
 // 添加错误处理
@@ -329,6 +330,11 @@ app.whenReady().then(async () => {
   });
 
   registerSetupIpc();
+
+  // 提前注册业务 IPC（设置页需要 config:* 系列接口来管理影片路径）
+  // 数据库可能未初始化，但 handler 内部会做检查
+  try { registerIpcHandlers(mainWindow, null, store); } catch (e) { console.warn('提前注册IPC失败:', e.message); }
+
   createWindow();
 
   await new Promise(resolve => {
@@ -360,6 +366,16 @@ app.whenReady().then(async () => {
     return;
   }
 
+  // 有配置时，把 mediaDir 写入 store 作为默认影片路径
+  if (firstLaunchConfig?.mediaDir) {
+    const existing = store.get('dataPaths', []);
+    if (!existing || existing.length === 0) {
+      store.set('dataPaths', [firstLaunchConfig.mediaDir]);
+      store.set('dataPath', firstLaunchConfig.mediaDir);
+      console.log('[配置] mediaDir → 默认影片路径:', firstLaunchConfig.mediaDir);
+    }
+  }
+
   await startMainApp();
 });
 
@@ -371,9 +387,8 @@ async function startMainApp() {
     dataPath = await checkAndSetDataPath();
     if (!dataPath) { console.log('未选择data路径'); return; }
 
-    registerIpcHandlers(mainWindow, dataPath, store);
-
-    console.log('初始化数据库...');
+    // registerIpcHandlers 可能已经调用过，跳过重复注册
+    console.log('数据库初始化...');
     initDatabase().then(async () => {
       console.log('数据库初始化完成');
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -414,17 +429,24 @@ async function startMainApp() {
 /** 注册首次启动/解锁 IPC */
 function registerSetupIpc() {
   ipcMain.handle('setup:getStatus', () => {
-    return { needsSetup, needsPassword: !!needsPassword, dataDir: firstLaunchConfig?.dataDir || null };
+    return { needsSetup, needsPassword: !!needsPassword, configDir: firstLaunchConfig?.configDir || null, mediaDir: firstLaunchConfig?.mediaDir || null };
   });
 
-  ipcMain.handle('setup:save', async (event, dataDir, password) => {
+  ipcMain.handle('setup:save', async (event, configDir, mediaDir, password) => {
     try {
-      fs.ensureDirSync(dataDir);
-      const cfg = { dataDir };
+      fs.ensureDirSync(configDir);
+      if (mediaDir) fs.ensureDirSync(mediaDir);
+      const cfg = { configDir, mediaDir: mediaDir || null };
       if (password) cfg.passwordHash = hashPwd(password);
       saveFirstLaunchConfig(cfg);
-      app.setPath('userData', dataDir);
-      console.log('[设置完成] userData →', dataDir);
+      // 设置 userData 到配置目录
+      app.setPath('userData', configDir);
+      // 写入默认影片路径
+      if (mediaDir) {
+        store.set('dataPaths', [mediaDir]);
+        store.set('dataPath', mediaDir);
+      }
+      console.log('[设置完成] configDir:', configDir, 'mediaDir:', mediaDir);
       return { success: true };
     } catch (e) {
       return { success: false, message: e.message };
@@ -433,7 +455,20 @@ function registerSetupIpc() {
 
   ipcMain.handle('setup:verifyPassword', (event, password) => {
     if (!firstLaunchConfig?.passwordHash) return { success: true };
-    return { success: verifyPwd(password, firstLaunchConfig.passwordHash) };
+    const ok = verifyPwd(password, firstLaunchConfig.passwordHash);
+    if (ok) {
+      // 密码正确，写入 mediaDir 并启动主应用
+      if (firstLaunchConfig.mediaDir) {
+        const existing = store.get('dataPaths', []);
+        if (!existing || existing.length === 0) {
+          store.set('dataPaths', [firstLaunchConfig.mediaDir]);
+          store.set('dataPath', firstLaunchConfig.mediaDir);
+        }
+      }
+      // 异步启动主应用
+      startMainApp();
+    }
+    return { success: ok };
   });
 
   ipcMain.handle('setup:setPassword', (event, newPassword) => {
@@ -444,7 +479,7 @@ function registerSetupIpc() {
   });
 
   ipcMain.handle('setup:getConfig', () => {
-    return { dataDir: firstLaunchConfig?.dataDir || null, hasPassword: !!firstLaunchConfig?.passwordHash };
+    return { configDir: firstLaunchConfig?.configDir || null, mediaDir: firstLaunchConfig?.mediaDir || null, hasPassword: !!firstLaunchConfig?.passwordHash };
   });
 
   ipcMain.handle('setup:reset', () => {
