@@ -161,7 +161,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     activate: (id, password) => ipcRenderer.invoke('configProfiles:activate', id, password),
     switch: () => ipcRenderer.invoke('configProfiles:switch'),
     relaunch: () => ipcRenderer.invoke('configProfiles:relaunch'),
-    getActive: () => ipcRenderer.invoke('configProfiles:getActive')
+    getActive: () => ipcRenderer.invoke('configProfiles:getActive'),
+    getCurrentFromStore: () => ipcRenderer.invoke('configProfiles:getCurrentFromStore')
   },
 
   // 演员头像（来自演员数据路径 Filetree.json + Content，支持简繁体匹配）

@@ -351,6 +351,21 @@ app.whenReady().then(async () => {
   }
 
   // ── 正常模式:初始化数据库和业务逻辑 ──
+  // 保存当前配置信息到 store（供设置页读取），然后清除临时 active 标记
+  {
+    const activeId = configManager.getActiveConfigId();
+    if (activeId) {
+      const configs = configManager.getConfigs();
+      const cfg = configs.find(c => c.id === activeId);
+      if (cfg) {
+        store.set('currentConfigName', cfg.name);
+        store.set('currentConfigDir', cfg.dataDir);
+      }
+    }
+  }
+  configManager.clearActive();
+  console.log('[正常模式] 已清除 active 标记，下次启动将显示配置选择页');
+
   let dataPath = null;
   try {
     console.log('应用准备就绪,开始初始化...');
@@ -480,14 +495,28 @@ function registerConfigIpc() {
 
   ipcMain.handle('configProfiles:switch', async () => {
     configManager.clearActive();
-    app.relaunch();
-    setTimeout(() => app.quit(), 300);
+    const { execFile } = require('child_process');
+    const exePath = process.execPath;
+    console.log('[switch] 清除配置并重启:', exePath);
+    execFile(exePath, { detached: true, stdio: 'ignore' }).unref();
+    setTimeout(() => app.quit(), 200);
   });
 
   // 重启进入已激活的配置（不清理 active）
   ipcMain.handle('configProfiles:relaunch', async () => {
-    app.relaunch();
-    setTimeout(() => app.quit(), 300);
+    const { execFile } = require('child_process');
+    const exePath = process.execPath;
+    console.log('[relaunch] 启动新进程:', exePath);
+    execFile(exePath, { detached: true, stdio: 'ignore' }).unref();
+    setTimeout(() => app.quit(), 200);
+  });
+
+  // 从 store 读取当前配置信息（active 文件已清除，用 store 兜底）
+  ipcMain.handle('configProfiles:getCurrentFromStore', () => {
+    return {
+      name: store.get('currentConfigName', null),
+      dataDir: store.get('currentConfigDir', null)
+    };
   });
 
   ipcMain.handle('configProfiles:getActive', () => {

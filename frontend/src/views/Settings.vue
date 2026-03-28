@@ -8,9 +8,34 @@
         </div>
       </el-header>
       <el-main class="page-theme-bg">
+        <!-- 当前配置信息 -->
         <el-card>
           <template #header>
-            <span>数据路径设置</span>
+            <span>当前配置</span>
+          </template>
+          <el-form label-width="120px">
+            <el-form-item label="配置名称">
+              <span>{{ activeConfigName || '默认' }}</span>
+            </el-form-item>
+            <el-form-item label="配置数据目录">
+              <span style="word-break: break-all; color: #666; font-size: 13px;">{{ activeConfigDir || '-' }}</span>
+              <el-text type="info" size="small" style="display: block;">
+                此目录存放该配置的数据库、收藏夹、播放历史等数据
+              </el-text>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="warning" @click="switchConfig">切换配置</el-button>
+              <el-text type="info" size="small" style="display: block; margin-top: 4px;">
+                切换到其他配置（将重启应用，不同配置拥有独立的数据库和设置）
+              </el-text>
+            </el-form-item>
+          </el-form>
+        </el-card>
+
+        <!-- 影片数据路径 -->
+        <el-card style="margin-top: 20px;">
+          <template #header>
+            <span>影片数据路径</span>
           </template>
           <el-form :model="form" label-width="120px">
             <el-form-item label="影片数据路径">
@@ -59,24 +84,6 @@
           </el-form>
         </el-card>
 
-        <!-- 多配置管理 -->
-        <el-card style="margin-top: 20px;">
-          <template #header>
-            <span>多配置管理</span>
-          </template>
-          <el-form label-width="120px">
-            <el-form-item label="当前配置">
-              <span>{{ activeConfigName || '默认' }}</span>
-            </el-form-item>
-            <el-form-item>
-              <el-button type="warning" @click="switchConfig">切换配置</el-button>
-              <el-text type="info" size="small" style="display: block; margin-top: 4px;">
-                切换到其他配置（将重启应用，不同配置拥有独立的数据库和设置）
-              </el-text>
-            </el-form-item>
-          </el-form>
-        </el-card>
-        
         <el-card style="margin-top: 20px;">
           <template #header>
             <span>数据扫描</span>
@@ -251,6 +258,7 @@ const dataPaths = ref([]);
 const actorDataPath = ref('');
 const autoScanOnStartup = ref(true);
 const activeConfigName = ref('');
+const activeConfigDir = ref('');
 const scanActorsLoading = ref(false);
 const scanning = ref(false);
 const syncDiffLoading = ref(false);
@@ -622,10 +630,12 @@ onMounted(async () => {
   loadAutoScanOnStartup();
   loadCustomPlayerPath();
 
-  // 加载当前配置名称
+  // 加载当前配置名称和目录（从 store 读取，active 文件启动后已清除）
   try {
     const active = await window.electronAPI?.configProfiles?.getActive?.();
-    if (active?.name) activeConfigName.value = active.name;
+    const storeInfo = await window.electronAPI?.configProfiles?.getCurrentFromStore?.();
+    activeConfigName.value = active?.name || storeInfo?.name || '';
+    activeConfigDir.value = active?.dataDir || storeInfo?.dataDir || '';
   } catch (_) {}
 
   const status = await window.electronAPI?.system?.getScanStatus?.();
