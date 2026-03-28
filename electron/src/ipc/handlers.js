@@ -662,6 +662,16 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     return { success: true };
   });
 
+  // 根据 code 查找影片 ID
+  ipcMain.handle('movies:getIdByCode', async (event, code) => {
+    try {
+      const sequelize = getSequelize();
+      if (!sequelize?.models?.Movie) return { success: false };
+      const movie = await sequelize.models.Movie.findOne({ where: { code }, attributes: ['id'] });
+      return { success: !!movie, id: movie?.id || null };
+    } catch { return { success: false }; }
+  });
+
   // 影片相关IPC(暂时返回空实现,后续完善)
   ipcMain.handle('movies:getList', async (event, params = {}) => {
     try {

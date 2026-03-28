@@ -15,7 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getDetailExtras: (id) => ipcRenderer.invoke('movies:getDetailExtras', id),
     openFileLocation: (id) => ipcRenderer.invoke('movies:openFileLocation', id),
     setRating: (movieId, rating) => ipcRenderer.invoke('movies:setRating', movieId, rating),
-    getRandomFromList: (params) => ipcRenderer.invoke('movies:getRandomFromList', params)
+    getRandomFromList: (params) => ipcRenderer.invoke('movies:getRandomFromList', params),
+    getIdByCode: (code) => ipcRenderer.invoke('movies:getIdByCode', code)
   },
   
   // 演员相关

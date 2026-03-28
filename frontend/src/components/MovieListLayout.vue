@@ -89,6 +89,9 @@
                 <div class="poster-waterfall-slot" :style="posterWrapStyle">暂无封面</div>
               </template>
             </el-image>
+            <div v-if="movie.takeoffCount > 0" class="takeoff-badge">
+              {{ movie.takeoffCount }}
+            </div>
           </div>
         </div>
       </div>
@@ -153,6 +156,9 @@
                 <StarFilled v-if="isFavorited(movie)" />
                 <Star v-else />
               </el-icon>
+            </div>
+            <div v-if="movie.takeoffCount > 0" class="takeoff-badge">
+              {{ movie.takeoffCount }}
             </div>
           </div>
           <div class="movie-info">
@@ -503,6 +509,25 @@ const onImageLoad = (movie) => {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.takeoff-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  background-color: #f56c6c;
+  color: #fff;
+  border-radius: 11px;
+  font-size: 12px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 
 .image-slot {

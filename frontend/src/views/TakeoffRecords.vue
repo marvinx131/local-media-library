@@ -5,6 +5,7 @@
         <div class="header-content">
           <h1 class="header-title">起飞记录</h1>
           <div style="display: flex; gap: 8px; align-items: center;">
+            <span style="color: #909399; font-size: 13px;">共 {{ records.length }} 条</span>
             <el-button v-if="records.length > 0" type="danger" size="small" @click="clearAll">清空记录</el-button>
             <ThemeSwitch />
           </div>
@@ -14,10 +15,14 @@
         <el-empty v-if="records.length === 0" description="暂无起飞记录" />
         <div v-else class="records-list">
           <div v-for="record in records" :key="record.id" class="record-item">
+            <div class="record-left">
+              <span class="record-count">{{ codeCounts[record.code] || 1 }}</span>
+            </div>
             <div class="record-main">
               <el-link type="primary" @click="goToMovie(record.code)" class="record-title">
-                {{ record.title }}
+                {{ record.title || record.code }}
               </el-link>
+              <div class="record-code">{{ record.code }}</div>
               <div class="record-time">{{ formatTime(record.timestamp) }}</div>
             </div>
             <div class="record-note">
@@ -41,7 +46,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onActivated } from 'vue';
+import { ref, computed, onMounted, onActivated } from 'vue';
 import { useRouter } from 'vue-router';
 import { Delete } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -49,6 +54,14 @@ import ThemeSwitch from '../components/ThemeSwitch.vue';
 
 const router = useRouter();
 const records = ref([]);
+
+const codeCounts = computed(() => {
+  const counts = {};
+  for (const r of records.value) {
+    counts[r.code] = (counts[r.code] || 0) + 1;
+  }
+  return counts;
+});
 
 async function loadRecords() {
   const res = await window.electronAPI.takeoff.getAll();
@@ -59,7 +72,7 @@ function formatTime(iso) {
   if (!iso) return '';
   const d = new Date(iso);
   const pad = n => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 async function saveNote(record) {
@@ -80,8 +93,13 @@ async function clearAll() {
   } catch (_) {}
 }
 
-function goToMovie(code) {
-  router.push({ name: 'SearchResults', query: { keyword: code } });
+async function goToMovie(code) {
+  const res = await window.electronAPI.movies.getIdByCode(code);
+  if (res?.success && res.id) {
+    router.push({ name: 'MovieDetail', params: { id: res.id } });
+  } else {
+    ElMessage.info('未找到对应影片');
+  }
 }
 
 onMounted(loadRecords);
@@ -95,11 +113,18 @@ onActivated(loadRecords);
 .header-title { margin: 0; }
 .records-list { max-width: 800px; margin: 0 auto; }
 .record-item {
-  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  display: flex; align-items: center; gap: 12px; padding: 14px 16px;
   background: var(--card-bg, #fff); border-radius: 8px; margin-bottom: 8px;
   border: 1px solid var(--border-color, #ebeef5);
 }
+.record-left { flex-shrink: 0; }
+.record-count {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: #f56c6c; color: #fff; font-weight: bold; font-size: 14px;
+}
 .record-main { flex: 1; min-width: 0; }
 .record-title { font-size: 15px; font-weight: 500; }
-.record-time { color: #909399; font-size: 12px; margin-top: 4px; }
+.record-code { color: #909399; font-size: 12px; margin-top: 2px; }
+.record-time { color: #606266; font-size: 14px; margin-top: 4px; font-weight: 500; }
 </style>
