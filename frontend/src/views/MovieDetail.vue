@@ -296,7 +296,7 @@
               随机截图
             </el-button>
           </div>
-          <div v-if="screenshotItems.length > 0" class="preview-strip" style="margin-top: 12px;">
+          <div v-if="screenshotItems.length > 0" class="screenshot-grid">
             <div
               v-for="(item, idx) in screenshotItems"
               :key="idx"
@@ -1320,16 +1320,39 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
+.screenshot-section .screenshot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
 .screenshot-item {
   display: flex;
   flex-direction: column;
   align-items: center;
+  position: relative;
+}
+
+.screenshot-item .preview-thumb-wrap {
+  width: 100%;
+}
+
+.screenshot-item .el-image {
+  width: 100%;
+  height: 130px;
+}
+
+.screenshot-item .el-image :deep(img) {
+  width: 100%;
+  height: 130px;
+  object-fit: cover;
 }
 
 .screenshot-ts {
   font-size: 11px;
   color: var(--el-text-color-secondary);
-  margin-top: 2px;
+  margin-top: 4px;
   font-family: 'Consolas', 'Menlo', monospace;
   white-space: nowrap;
 }
