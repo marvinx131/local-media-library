@@ -118,7 +118,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   movie: {
     playVideo: (movieId) => ipcRenderer.invoke('movie:playVideo', movieId),
     playFile: (filePath) => ipcRenderer.invoke('movie:playFile', filePath),
-    takeScreenshot: (movieId, timestamp) => ipcRenderer.invoke('movie:takeScreenshot', movieId, timestamp),
+    takeScreenshot: (movieId, timestamp, precise) => ipcRenderer.invoke('movie:takeScreenshot', movieId, timestamp, precise),
     randomScreenshots: (movieId, count) => ipcRenderer.invoke('movie:randomScreenshots', movieId, count),
     getScreenshots: (movieId) => ipcRenderer.invoke('movie:getScreenshots', movieId),
     deleteScreenshot: (movieId, path) => ipcRenderer.invoke('movie:deleteScreenshot', movieId, path)

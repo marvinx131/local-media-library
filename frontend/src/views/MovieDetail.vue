@@ -282,6 +282,7 @@
             <el-button type="primary" @click="takeScreenshot" :loading="screenshotLoading" icon="Camera">
               截图
             </el-button>
+            <el-checkbox v-model="preciseMode" style="margin-left: -4px;">精确到帧</el-checkbox>
             <el-divider direction="vertical" />
             <el-input-number
               v-model="randomCount"
@@ -498,6 +499,7 @@ const screenshotTimestamp = ref('');
 const screenshotLoading = ref(false);
 const screenshotItems = ref([]); // [{ path, timestamp, url }]
 const randomCount = ref(5);
+const preciseMode = ref(false);
 const editDialogVisible = ref(false);
 const favoriteDialogVisible = ref(false);
 const detailFavoriteFolderIds = ref([]);
@@ -893,7 +895,7 @@ const takeScreenshot = async () => {
   }
   screenshotLoading.value = true;
   try {
-    const res = await window.electronAPI.movie.takeScreenshot(movie.value.id, screenshotTimestamp.value.trim());
+    const res = await window.electronAPI.movie.takeScreenshot(movie.value.id, screenshotTimestamp.value.trim(), preciseMode.value);
     if (res?.success) {
       ElMessage.success('截图成功');
       screenshotTimestamp.value = '';
