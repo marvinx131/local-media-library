@@ -517,10 +517,125 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
 
       // 返回相对路径（相对 dataPath）
       const relativePath = path.relative(path.normalize(dataPath), path.normalize(outputPath)).replace(/\\/g, '/');
-      return { success: true, path: relativePath, filename };
+      return { success: true, path: relativePath, filename, timestamp: String(timestamp).trim() };
     } catch (error) {
       console.error('截图失败:', error);
       return { success: false, message: error.message || '截图失败' };
+    }
+  });
+
+  /**
+   * movie:randomScreenshots - 在随机时间点截取多张图片
+   * @param {number} movieId - 影片 ID
+   * @param {number} count - 截图数量
+   */
+  ipcMain.handle('movie:randomScreenshots', async (event, movieId, count) => {
+    try {
+      const num = parseInt(count);
+      if (!num || num < 1 || num > 50) {
+        return { success: false, message: '截图数量需在 1-50 之间' };
+      }
+
+      const sequelize = getSequelize();
+      if (!sequelize?.models) return { success: false, message: '数据库未初始化' };
+
+      const Movie = sequelize.models.Movie;
+      const movie = await Movie.findByPk(parseInt(movieId));
+      if (!movie) return { success: false, message: '影片不存在' };
+      if (!movie.video_path) return { success: false, message: '该影片无视频文件' };
+
+      // 定位视频文件
+      const dataPaths = getDataPaths();
+      const dataPathIndex = movie.data_path_index || 0;
+      let videoPath = null;
+      const candidates = [
+        path.join(dataPaths[dataPathIndex] || '', movie.video_path),
+        ...dataPaths.map(dp => path.join(dp, movie.video_path))
+      ];
+      for (const p of candidates) {
+        if (p && await fs.pathExists(p)) { videoPath = p; break; }
+      }
+      if (!videoPath) return { success: false, message: '视频文件不存在' };
+
+      // 获取 ffmpeg 路径
+      const { execFile } = require('child_process');
+      const customFfmpeg = settingsStore.get('ffmpegPath', '');
+      const ffmpegBin = customFfmpeg && customFfmpeg.trim() ? customFfmpeg.trim() : 'ffmpeg';
+      const ffprobeBin = ffmpegBin.replace(/ffmpeg(\.\w+)?$/, 'ffprobe$1');
+
+      // 用 ffprobe 获取视频时长
+      const duration = await new Promise((resolve, reject) => {
+        execFile(ffprobeBin, [
+          '-v', 'error',
+          '-show_entries', 'format=duration',
+          '-of', 'default=noprint_wrappers=1:nokey=1',
+          videoPath
+        ], { timeout: 10000 }, (error, stdout) => {
+          if (error) reject(new Error('无法获取视频时长，请确认 ffprobe 可用'));
+          else resolve(parseFloat(stdout.trim()));
+        });
+      });
+
+      if (!duration || isNaN(duration) || duration <= 0) {
+        return { success: false, message: '无法获取视频时长' };
+      }
+
+      // 生成随机时间点（避开首尾各5%）
+      const margin = duration * 0.05;
+      const range = duration - margin * 2;
+      const timestamps = [];
+      for (let i = 0; i < num; i++) {
+        const t = margin + Math.random() * range;
+        timestamps.push(t.toFixed(3));
+      }
+
+      // 截图保存目录
+      const dataPath = dataPaths[dataPathIndex] || dataPaths[0];
+      const movieFolder = path.join(dataPath, movie.folder_path);
+      const screenshotsDir = path.join(movieFolder, 'screenshots');
+      await fs.ensureDir(screenshotsDir);
+
+      // 逐个截图
+      const results = [];
+      for (let i = 0; i < timestamps.length; i++) {
+        const ts = timestamps[i];
+        // 格式化为 HH-MM-SS.mmm
+        const h = Math.floor(ts / 3600);
+        const m = Math.floor((ts % 3600) / 60);
+        const s = (ts % 60).toFixed(3);
+        const safeTs = `${String(h).padStart(2,'0')}-${String(m).padStart(2,'0')}-${s.padStart(6,'0')}`;
+        const filename = `${movie.code}_rnd${i+1}_${safeTs}.jpg`;
+        const outputPath = path.join(screenshotsDir, filename);
+
+        try {
+          await new Promise((resolve, reject) => {
+            execFile(ffmpegBin, [
+              '-i', videoPath,
+              '-ss', ts,
+              '-frames:v', '1',
+              '-q:v', '2',
+              '-y',
+              outputPath
+            ], { timeout: 60000 }, (error) => {
+              if (error) reject(error);
+              else resolve();
+            });
+          });
+
+          if (await fs.pathExists(outputPath)) {
+            const relPath = path.relative(path.normalize(dataPath), path.normalize(outputPath)).replace(/\\/g, '/');
+            const displayTs = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${s.padStart(6,'0')}`;
+            results.push({ path: relPath, timestamp: displayTs });
+          }
+        } catch (err) {
+          console.error(`随机截图 #${i+1} 失败:`, err.message);
+        }
+      }
+
+      return { success: true, data: results, total: results.length, attempted: num };
+    } catch (error) {
+      console.error('随机截图失败:', error);
+      return { success: false, message: error.message || '随机截图失败' };
     }
   });
 
@@ -551,12 +666,20 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
       const dataPathNorm = path.normalize(dataPath);
-      const paths = imageFiles.map(f => {
+      const data = imageFiles.map(f => {
         const abs = path.join(screenshotsDir, f);
-        return path.relative(dataPathNorm, path.normalize(abs)).replace(/\\/g, '/');
+        const relPath = path.relative(dataPathNorm, path.normalize(abs)).replace(/\\/g, '/');
+        // 从文件名提取时间戳：code_HH-MM-SS.mmm.jpg → HH:MM:SS.mmm
+        let ts = '';
+        const nameWithoutExt = path.basename(f, path.extname(f));
+        const underscoreIdx = nameWithoutExt.indexOf('_');
+        if (underscoreIdx !== -1) {
+          ts = nameWithoutExt.substring(underscoreIdx + 1).replace(/-/g, ':');
+        }
+        return { path: relPath, timestamp: ts };
       });
 
-      return { success: true, data: paths };
+      return { success: true, data };
     } catch (error) {
       console.error('获取截图列表失败:', error);
       return { success: true, data: [] };

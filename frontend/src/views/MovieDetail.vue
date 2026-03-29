@@ -282,31 +282,46 @@
             <el-button type="primary" @click="takeScreenshot" :loading="screenshotLoading" icon="Camera">
               截图
             </el-button>
+            <el-divider direction="vertical" />
+            <el-input-number
+              v-model="randomCount"
+              :min="1"
+              :max="50"
+              :step="1"
+              style="width: 100px;"
+              controls-position="right"
+            />
+            <el-button type="success" @click="takeRandomScreenshots" :loading="screenshotLoading" icon="MagicStick">
+              随机截图
+            </el-button>
           </div>
-          <div v-if="screenshotPaths.length > 0" class="preview-strip" style="margin-top: 12px;">
+          <div v-if="screenshotItems.length > 0" class="preview-strip" style="margin-top: 12px;">
             <div
-              v-for="(url, idx) in screenshotUrls"
+              v-for="(item, idx) in screenshotItems"
               :key="idx"
-              class="preview-thumb-wrap"
+              class="screenshot-item"
             >
-              <el-image
-                :src="url"
-                fit="cover"
-                class="preview-thumb"
-                :preview-src-list="screenshotUrls"
-                :initial-index="idx"
-                :preview-teleported="true"
-              >
-                <template #error>
-                  <div class="preview-thumb-slot">加载失败</div>
-                </template>
-              </el-image>
-              <button
-                type="button"
-                class="screenshot-delete-btn"
-                title="删除截图"
-                @click.stop="deleteScreenshot(idx)"
-              >×</button>
+              <div class="preview-thumb-wrap">
+                <el-image
+                  :src="item.url"
+                  fit="cover"
+                  class="preview-thumb"
+                  :preview-src-list="screenshotUrls"
+                  :initial-index="idx"
+                  :preview-teleported="true"
+                >
+                  <template #error>
+                    <div class="preview-thumb-slot">加载失败</div>
+                  </template>
+                </el-image>
+                <button
+                  type="button"
+                  class="screenshot-delete-btn"
+                  title="删除截图"
+                  @click.stop="deleteScreenshot(idx)"
+                >×</button>
+              </div>
+              <div v-if="item.timestamp" class="screenshot-ts">{{ item.timestamp }}</div>
             </div>
           </div>
         </div>
@@ -454,7 +469,7 @@ defineOptions({ name: 'MovieDetail' });
 import { ref, onMounted, computed, onBeforeMount, onBeforeUnmount, watch } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { ElMessage } from 'element-plus';
-import { VideoPlay, FolderOpened, DocumentCopy, Edit, Star, StarFilled, Check, Plus } from '@element-plus/icons-vue';
+import { VideoPlay, FolderOpened, DocumentCopy, Edit, Star, StarFilled, Check, Plus, MagicStick } from '@element-plus/icons-vue';
 import { loadImage as loadImageWithPriority, resumeBackgroundLoading } from '../utils/imageLoader';
 import ThemeSwitch from '../components/ThemeSwitch.vue';
 import FavoriteFoldersDialog from '../components/FavoriteFoldersDialog.vue';
@@ -481,8 +496,8 @@ const previewVisible = ref(false);
 const previewCurrentIndex = ref(0);
 const screenshotTimestamp = ref('');
 const screenshotLoading = ref(false);
-const screenshotPaths = ref([]);
-const screenshotUrls = ref([]);
+const screenshotItems = ref([]); // [{ path, timestamp, url }]
+const randomCount = ref(5);
 const editDialogVisible = ref(false);
 const favoriteDialogVisible = ref(false);
 const detailFavoriteFolderIds = ref([]);
@@ -848,23 +863,22 @@ const playVideo = async () => {
   }
 };
 
+const screenshotUrls = computed(() => screenshotItems.value.map(i => i.url || ''));
+
 const loadScreenshots = async () => {
   if (!movie.value?.id) return;
   try {
     const res = await window.electronAPI.movie.getScreenshots(movie.value.id);
     if (res?.success) {
-      screenshotPaths.value = res.data || [];
-      // 加载缩略图
-      const urls = [];
-      for (const p of screenshotPaths.value) {
+      const items = [];
+      for (const item of (res.data || [])) {
+        let url = '';
         try {
-          const u = await loadImageWithPriority(p, movie.value.data_path_index || 0, true, {});
-          urls.push(u || '');
-        } catch {
-          urls.push('');
-        }
+          url = await loadImageWithPriority(item.path, movie.value.data_path_index || 0, true, {}) || '';
+        } catch {}
+        items.push({ path: item.path, timestamp: item.timestamp || '', url });
       }
-      screenshotUrls.value = urls;
+      screenshotItems.value = items;
     }
   } catch (e) {
     console.error('加载截图列表失败:', e);
@@ -894,12 +908,30 @@ const takeScreenshot = async () => {
   }
 };
 
+const takeRandomScreenshots = async () => {
+  if (!movie.value?.id) return;
+  screenshotLoading.value = true;
+  try {
+    const res = await window.electronAPI.movie.randomScreenshots(movie.value.id, randomCount.value);
+    if (res?.success) {
+      ElMessage.success(`随机截图完成：成功 ${res.total}/${res.attempted} 张`);
+      await loadScreenshots();
+    } else {
+      ElMessage.error(res?.message || '随机截图失败');
+    }
+  } catch (e) {
+    ElMessage.error('随机截图失败: ' + e.message);
+  } finally {
+    screenshotLoading.value = false;
+  }
+};
+
 const deleteScreenshot = async (idx) => {
   if (!movie.value?.id) return;
-  const p = screenshotPaths.value[idx];
-  if (!p) return;
+  const item = screenshotItems.value[idx];
+  if (!item?.path) return;
   try {
-    const res = await window.electronAPI.movie.deleteScreenshot(movie.value.id, p);
+    const res = await window.electronAPI.movie.deleteScreenshot(movie.value.id, item.path);
     if (res?.success) {
       ElMessage.success('已删除');
       await loadScreenshots();
@@ -1283,6 +1315,21 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.screenshot-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.screenshot-ts {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  margin-top: 2px;
+  font-family: 'Consolas', 'Menlo', monospace;
+  white-space: nowrap;
 }
 
 .screenshot-delete-btn {
