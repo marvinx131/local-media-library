@@ -248,6 +248,33 @@
             </el-form-item>
           </el-form>
         </el-card>
+
+        <el-card style="margin-top: 20px;">
+          <template #header>
+            <span>截图设置（ffmpeg）</span>
+          </template>
+          <el-form label-width="120px">
+            <el-form-item label="ffmpeg 路径">
+              <div style="width: 100%; display: flex; align-items: center; gap: 8px;">
+                <el-input
+                  v-model="ffmpegPath"
+                  placeholder="留空自动使用系统 ffmpeg"
+                  style="flex: 1;"
+                  clearable
+                  @change="handleFfmpegPathChange"
+                />
+                <el-button type="primary" @click="chooseFfmpegPath">选择</el-button>
+                <el-button @click="checkFfmpegStatus">检测</el-button>
+              </div>
+              <el-text type="info" size="small" style="display: block; margin-top: 4px;">
+                用于影片详情页截图功能。系统已安装 ffmpeg 可留空。
+              </el-text>
+              <el-text v-if="ffmpegStatus" :type="ffmpegStatus.available ? 'success' : 'danger'" size="small" style="display: block; margin-top: 2px;">
+                {{ ffmpegStatus.available ? '✅ ' + ffmpegStatus.version : '❌ ' + ffmpegStatus.message }}
+              </el-text>
+            </el-form-item>
+          </el-form>
+        </el-card>
         
       </el-main>
     </el-container>
@@ -283,6 +310,8 @@ const syncDiffProgress = ref({
 const syncDiffResult = ref(null); // { added, removed, addedList, failedList }
 const filterPlayable = ref(false);
 const customPlayerPath = ref('');
+const ffmpegPath = ref('');
+const ffmpegStatus = ref(null);
 const scanProgress = ref({
   current: 0,
   total: 0,
@@ -414,6 +443,46 @@ const loadCustomPlayerPath = async () => {
     customPlayerPath.value = await window.electronAPI.settings.getCustomPlayerPath() || '';
   } catch (error) {
     console.error('加载播放器设置失败:', error);
+  }
+};
+
+const loadFfmpegPath = async () => {
+  try {
+    ffmpegPath.value = await window.electronAPI.settings.getFfmpegPath() || '';
+  } catch (error) {
+    console.error('加载ffmpeg设置失败:', error);
+  }
+};
+
+const handleFfmpegPathChange = async (value) => {
+  try {
+    await window.electronAPI.settings.setFfmpegPath(value || '');
+    ElMessage.success(value ? '已设置 ffmpeg 路径' : '已恢复系统默认 ffmpeg');
+    ffmpegStatus.value = null;
+  } catch (error) {
+    ElMessage.error('保存失败: ' + error.message);
+  }
+};
+
+const chooseFfmpegPath = async () => {
+  try {
+    const res = await window.electronAPI.settings.chooseFfmpegPath();
+    if (res?.success && res.path) {
+      ffmpegPath.value = res.path;
+      ElMessage.success('已设置 ffmpeg 路径');
+      ffmpegStatus.value = null;
+    }
+  } catch (error) {
+    ElMessage.error('选择失败');
+  }
+};
+
+const checkFfmpegStatus = async () => {
+  try {
+    const res = await window.electronAPI.settings.checkFfmpeg();
+    ffmpegStatus.value = res;
+  } catch (error) {
+    ffmpegStatus.value = { available: false, message: error.message };
   }
 };
 
@@ -673,6 +742,7 @@ onMounted(async () => {
   loadFilterPlayable();
   loadAutoScanOnStartup();
   loadCustomPlayerPath();
+  loadFfmpegPath();
 
   // 加载密码状态
   try {

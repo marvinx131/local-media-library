@@ -51,33 +51,7 @@ nsis:
 portable:
   artifactName: "${productName}-Portable-${version}.${ext}"
 
-# macOS 配置
-mac:
-  target:
-    - target: dmg
-      arch:
-        - x64
-        - arm64
-    - target: zip
-      arch:
-        - x64
-        - arm64
-  artifactName: "${productName}-Mac-${arch}-${version}.${ext}"
-  category: public.app-category.video
-  identity: null
 
-# Linux 配置（仅 AppImage，跳过 snap）
-linux:
-  target:
-    - target: AppImage
-      arch:
-        - x64
-        - arm64
-  artifactName: "${productName}-Linux-${arch}-${version}.${ext}"
-  category: AudioVideo
-
-dmg:
-  artifactName: "${productName}-Mac-${arch}-${version}.${ext}"
 electronVersion: 28.0.0
 # 配置 native 依赖的构建 - 完全跳过重新编译（使用已编译的版本）
 nodeGypRebuild: false

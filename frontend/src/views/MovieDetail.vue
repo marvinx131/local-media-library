@@ -268,6 +268,49 @@
           </div>
         </Teleport>
 
+        <!-- 截图区域 -->
+        <div v-if="movie && movie.playable" class="detail-section screenshot-section">
+          <div class="section-title">截图</div>
+          <div class="screenshot-controls">
+            <el-input
+              v-model="screenshotTimestamp"
+              placeholder="时间点，如 00:05:30.692 或 5:30"
+              style="width: 220px;"
+              clearable
+              @keyup.enter="takeScreenshot"
+            />
+            <el-button type="primary" @click="takeScreenshot" :loading="screenshotLoading" icon="Camera">
+              截图
+            </el-button>
+          </div>
+          <div v-if="screenshotPaths.length > 0" class="preview-strip" style="margin-top: 12px;">
+            <div
+              v-for="(url, idx) in screenshotUrls"
+              :key="idx"
+              class="preview-thumb-wrap"
+            >
+              <el-image
+                :src="url"
+                fit="cover"
+                class="preview-thumb"
+                :preview-src-list="screenshotUrls"
+                :initial-index="idx"
+                :preview-teleported="true"
+              >
+                <template #error>
+                  <div class="preview-thumb-slot">加载失败</div>
+                </template>
+              </el-image>
+              <button
+                type="button"
+                class="screenshot-delete-btn"
+                title="删除截图"
+                @click.stop="deleteScreenshot(idx)"
+              >×</button>
+            </div>
+          </div>
+        </div>
+
         <!-- 作品简介：来自 NFO 的 originalplot，无则不展示 -->
         <div v-if="movie && detailExtras.originalplot" class="detail-section synopsis-section">
           <div class="section-title">作品简介</div>
@@ -436,6 +479,10 @@ const detailExtras = ref({ originalplot: null, previewImagePaths: [] });
 const previewImageUrls = ref([]);
 const previewVisible = ref(false);
 const previewCurrentIndex = ref(0);
+const screenshotTimestamp = ref('');
+const screenshotLoading = ref(false);
+const screenshotPaths = ref([]);
+const screenshotUrls = ref([]);
 const editDialogVisible = ref(false);
 const favoriteDialogVisible = ref(false);
 const detailFavoriteFolderIds = ref([]);
@@ -568,6 +615,8 @@ const loadMovie = async () => {
           inPlaylist.value = false;
         }
       }
+      // 加载截图列表
+      await loadScreenshots();
     } else {
       ElMessage.error('加载影片详情失败: ' + (result?.message || '未知错误'));
     }
@@ -796,6 +845,69 @@ const playVideo = async () => {
     // 即使失败也恢复后台加载
     const { resumeBackgroundLoading } = await import('../utils/imageLoader');
     resumeBackgroundLoading();
+  }
+};
+
+const loadScreenshots = async () => {
+  if (!movie.value?.id) return;
+  try {
+    const res = await window.electronAPI.movie.getScreenshots(movie.value.id);
+    if (res?.success) {
+      screenshotPaths.value = res.data || [];
+      // 加载缩略图
+      const urls = [];
+      for (const p of screenshotPaths.value) {
+        try {
+          const u = await loadImageWithPriority(p, movie.value.data_path_index || 0, true, {});
+          urls.push(u || '');
+        } catch {
+          urls.push('');
+        }
+      }
+      screenshotUrls.value = urls;
+    }
+  } catch (e) {
+    console.error('加载截图列表失败:', e);
+  }
+};
+
+const takeScreenshot = async () => {
+  if (!movie.value?.id) return;
+  if (!screenshotTimestamp.value.trim()) {
+    ElMessage.warning('请输入时间点，如 00:05:30');
+    return;
+  }
+  screenshotLoading.value = true;
+  try {
+    const res = await window.electronAPI.movie.takeScreenshot(movie.value.id, screenshotTimestamp.value.trim());
+    if (res?.success) {
+      ElMessage.success('截图成功');
+      screenshotTimestamp.value = '';
+      await loadScreenshots();
+    } else {
+      ElMessage.error(res?.message || '截图失败');
+    }
+  } catch (e) {
+    ElMessage.error('截图失败: ' + e.message);
+  } finally {
+    screenshotLoading.value = false;
+  }
+};
+
+const deleteScreenshot = async (idx) => {
+  if (!movie.value?.id) return;
+  const p = screenshotPaths.value[idx];
+  if (!p) return;
+  try {
+    const res = await window.electronAPI.movie.deleteScreenshot(movie.value.id, p);
+    if (res?.success) {
+      ElMessage.success('已删除');
+      await loadScreenshots();
+    } else {
+      ElMessage.error(res?.message || '删除失败');
+    }
+  } catch (e) {
+    ElMessage.error('删除失败: ' + e.message);
   }
 };
 
@@ -1164,6 +1276,38 @@ onMounted(() => {
 
 .preview-thumb-wrap {
   cursor: zoom-in;
+  position: relative;
+}
+
+.screenshot-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.screenshot-delete-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 2;
+}
+
+.preview-thumb-wrap:hover .screenshot-delete-btn {
+  opacity: 1;
 }
 
 /* 自定义预览轮播层：中间下方页数 + 左右切换 */

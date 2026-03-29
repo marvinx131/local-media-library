@@ -107,13 +107,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clearActorDataPath: () => ipcRenderer.invoke('settings:clearActorDataPath'),
     getCustomPlayerPath: () => ipcRenderer.invoke('settings:getCustomPlayerPath'),
     setCustomPlayerPath: (value) => ipcRenderer.invoke('settings:setCustomPlayerPath', value),
-    choosePlayerPath: () => ipcRenderer.invoke('settings:choosePlayerPath')
+    choosePlayerPath: () => ipcRenderer.invoke('settings:choosePlayerPath'),
+    getFfmpegPath: () => ipcRenderer.invoke('settings:getFfmpegPath'),
+    setFfmpegPath: (value) => ipcRenderer.invoke('settings:setFfmpegPath', value),
+    chooseFfmpegPath: () => ipcRenderer.invoke('settings:chooseFfmpegPath'),
+    checkFfmpeg: () => ipcRenderer.invoke('settings:checkFfmpeg')
   },
   
   // 播放相关
   movie: {
     playVideo: (movieId) => ipcRenderer.invoke('movie:playVideo', movieId),
-    playFile: (filePath) => ipcRenderer.invoke('movie:playFile', filePath)
+    playFile: (filePath) => ipcRenderer.invoke('movie:playFile', filePath),
+    takeScreenshot: (movieId, timestamp) => ipcRenderer.invoke('movie:takeScreenshot', movieId, timestamp),
+    getScreenshots: (movieId) => ipcRenderer.invoke('movie:getScreenshots', movieId),
+    deleteScreenshot: (movieId, path) => ipcRenderer.invoke('movie:deleteScreenshot', movieId, path)
   },
 
   // 收藏夹（按识别码存储，扫描不清空）

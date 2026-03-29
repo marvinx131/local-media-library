@@ -182,6 +182,53 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
     }
   });
 
+  // ffmpeg 路径设置
+  ipcMain.handle('settings:getFfmpegPath', () => {
+    return settingsStore.get('ffmpegPath', '');
+  });
+
+  ipcMain.handle('settings:setFfmpegPath', (event, value) => {
+    settingsStore.set('ffmpegPath', value || '');
+    return { success: true };
+  });
+
+  ipcMain.handle('settings:chooseFfmpegPath', async () => {
+    try {
+      const win = mainWindowRef || BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+      if (!win) return { success: false, message: '无法打开对话框' };
+      const result = await dialog.showOpenDialog(win, {
+        properties: ['openFile'],
+        title: '选择 ffmpeg 可执行文件',
+        filters: [
+          { name: '可执行文件', extensions: ['exe', ''] }
+        ]
+      });
+      if (result.canceled || !result.filePaths.length) return { success: false, message: '已取消' };
+      const p = result.filePaths[0];
+      settingsStore.set('ffmpegPath', p);
+      return { success: true, path: p };
+    } catch (e) {
+      return { success: false, message: e.message };
+    }
+  });
+
+  // 检测 ffmpeg 是否可用（系统 PATH 或自定义路径）
+  ipcMain.handle('settings:checkFfmpeg', async () => {
+    const { execFile } = require('child_process');
+    const customPath = settingsStore.get('ffmpegPath', '');
+    const bin = customPath && customPath.trim() ? customPath.trim() : 'ffmpeg';
+    return new Promise((resolve) => {
+      execFile(bin, ['-version'], { timeout: 5000 }, (error, stdout) => {
+        if (error) {
+          resolve({ available: false, message: error.message });
+        } else {
+          const firstLine = (stdout || '').split('\n')[0];
+          resolve({ available: true, version: firstLine });
+        }
+      });
+    });
+  });
+
   ipcMain.handle('settings:getAutoScanOnStartup', () => {
     return settingsStore.get('autoScanOnStartup', true);
   });
@@ -399,6 +446,156 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
       return { success: true };
     }
   }
+
+  // ── 截图功能 ──
+  /**
+   * movie:takeScreenshot - 用 ffmpeg 截取视频某一帧
+   * @param {number} movieId - 影片 ID
+   * @param {string} timestamp - 时间点，格式 HH:MM:SS 或 MM:SS 或秒数
+   */
+  ipcMain.handle('movie:takeScreenshot', async (event, movieId, timestamp) => {
+    try {
+      if (!timestamp || !String(timestamp).trim()) {
+        return { success: false, message: '请输入时间点' };
+      }
+
+      const sequelize = getSequelize();
+      if (!sequelize?.models) return { success: false, message: '数据库未初始化' };
+
+      const Movie = sequelize.models.Movie;
+      const movie = await Movie.findByPk(parseInt(movieId));
+      if (!movie) return { success: false, message: '影片不存在' };
+      if (!movie.video_path) return { success: false, message: '该影片无视频文件' };
+
+      // 定位视频文件
+      const dataPaths = getDataPaths();
+      const dataPathIndex = movie.data_path_index || 0;
+      let videoPath = null;
+      const candidates = [
+        path.join(dataPaths[dataPathIndex] || '', movie.video_path),
+        ...dataPaths.map(dp => path.join(dp, movie.video_path))
+      ];
+      for (const p of candidates) {
+        if (p && await fs.pathExists(p)) { videoPath = p; break; }
+      }
+      if (!videoPath) return { success: false, message: '视频文件不存在' };
+
+      // 获取 ffmpeg 路径
+      const { execFile } = require('child_process');
+      const customFfmpeg = settingsStore.get('ffmpegPath', '');
+      const ffmpegBin = customFfmpeg && customFfmpeg.trim() ? customFfmpeg.trim() : 'ffmpeg';
+
+      // 截图保存目录：影片文件夹/screenshots/
+      const dataPath = dataPaths[dataPathIndex] || dataPaths[0];
+      const movieFolder = path.join(dataPath, movie.folder_path);
+      const screenshotsDir = path.join(movieFolder, 'screenshots');
+      await fs.ensureDir(screenshotsDir);
+
+      // 生成文件名：code_timestamp.jpg（时间中的冒号替换为-）
+      const safeTimestamp = String(timestamp).trim().replace(/:/g, '-');
+      const filename = `${movie.code}_${safeTimestamp}.jpg`;
+      const outputPath = path.join(screenshotsDir, filename);
+
+      // 调用 ffmpeg 截图（-ss 放 -i 后面，逐帧解码到目标帧，精度到帧）
+      await new Promise((resolve, reject) => {
+        execFile(ffmpegBin, [
+          '-i', videoPath,
+          '-ss', String(timestamp).trim(),
+          '-frames:v', '1',
+          '-q:v', '2',
+          '-y',
+          outputPath
+        ], { timeout: 60000 }, (error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+
+      if (!await fs.pathExists(outputPath)) {
+        return { success: false, message: '截图生成失败' };
+      }
+
+      // 返回相对路径（相对 dataPath）
+      const relativePath = path.relative(path.normalize(dataPath), path.normalize(outputPath)).replace(/\\/g, '/');
+      return { success: true, path: relativePath, filename };
+    } catch (error) {
+      console.error('截图失败:', error);
+      return { success: false, message: error.message || '截图失败' };
+    }
+  });
+
+  /**
+   * movie:getScreenshots - 获取影片的所有截图路径
+   */
+  ipcMain.handle('movie:getScreenshots', async (event, movieId) => {
+    try {
+      const sequelize = getSequelize();
+      if (!sequelize?.models) return { success: true, data: [] };
+
+      const Movie = sequelize.models.Movie;
+      const movie = await Movie.findByPk(parseInt(movieId));
+      if (!movie?.folder_path) return { success: true, data: [] };
+
+      const dataPaths = getDataPaths();
+      const dataPathIndex = movie.data_path_index || 0;
+      const dataPath = dataPaths[dataPathIndex] || dataPaths[0];
+      if (!dataPath) return { success: true, data: [] };
+
+      const screenshotsDir = path.join(dataPath, movie.folder_path, 'screenshots');
+      if (!await fs.pathExists(screenshotsDir)) return { success: true, data: [] };
+
+      const files = await fs.readdir(screenshotsDir);
+      const imageExts = ['.jpg', '.jpeg', '.png', '.webp'];
+      const imageFiles = files
+        .filter(f => imageExts.includes(path.extname(f).toLowerCase()))
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+      const dataPathNorm = path.normalize(dataPath);
+      const paths = imageFiles.map(f => {
+        const abs = path.join(screenshotsDir, f);
+        return path.relative(dataPathNorm, path.normalize(abs)).replace(/\\/g, '/');
+      });
+
+      return { success: true, data: paths };
+    } catch (error) {
+      console.error('获取截图列表失败:', error);
+      return { success: true, data: [] };
+    }
+  });
+
+  /**
+   * movie:deleteScreenshot - 删除指定截图
+   */
+  ipcMain.handle('movie:deleteScreenshot', async (event, movieId, screenshotPath) => {
+    try {
+      const sequelize = getSequelize();
+      if (!sequelize?.models) return { success: false, message: '数据库未初始化' };
+
+      const Movie = sequelize.models.Movie;
+      const movie = await Movie.findByPk(parseInt(movieId));
+      if (!movie) return { success: false, message: '影片不存在' };
+
+      const dataPaths = getDataPaths();
+      const dataPathIndex = movie.data_path_index || 0;
+      const dataPath = dataPaths[dataPathIndex] || dataPaths[0];
+      if (!dataPath) return { success: false, message: '数据路径未设置' };
+
+      const absPath = path.join(dataPath, screenshotPath);
+      // 安全检查：确保文件在 screenshots 目录内
+      const screenshotsDir = path.join(dataPath, movie.folder_path, 'screenshots');
+      if (!path.normalize(absPath).startsWith(path.normalize(screenshotsDir))) {
+        return { success: false, message: '无效的文件路径' };
+      }
+
+      if (await fs.pathExists(absPath)) {
+        await fs.remove(absPath);
+      }
+      return { success: true };
+    } catch (error) {
+      console.error('删除截图失败:', error);
+      return { success: false, message: error.message };
+    }
+  });
 
   // 收藏夹 IPC(按识别码 code 存储,扫描时不清空)
   ipcMain.handle('favorites:getFolders', () => {
