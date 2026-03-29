@@ -30,6 +30,15 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
   // 创建设置存储实例(开发/正式/测试环境通过 getStoreName 区分)
   const settingsStore = store || new Store({ name: getStoreName() });
 
+  /** 解析时间戳字符串为秒数：支持 HH:MM:SS.mmm、MM:SS、纯秒数 */
+  function parseTimestampToSeconds(ts) {
+    if (!ts) return 0;
+    const parts = ts.split(':');
+    if (parts.length === 3) return parseFloat(parts[0]) * 3600 + parseFloat(parts[1]) * 60 + parseFloat(parts[2]);
+    if (parts.length === 2) return parseFloat(parts[0]) * 60 + parseFloat(parts[1]);
+    return parseFloat(ts) || 0;
+  }
+
   /** 根据 sortBy 参数返回 Sequelize order 数组(支持 premiered/title/folder_updated_at 正序/倒序) */
   function getOrderFromSortBy(sortBy) {
     if (sortBy === 'title-asc') return [['title', 'ASC']];
@@ -496,16 +505,19 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
       const filename = `${movie.code}_${safeTimestamp}.jpg`;
       const outputPath = path.join(screenshotsDir, filename);
 
-      // 调用 ffmpeg 截图（-ss 放 -i 后面，逐帧解码到目标帧，精度到帧）
+      // 两步法截图：先快速 seek 到目标前2秒，再精确解码到目标帧
+      const tsSec = parseTimestampToSeconds(String(timestamp).trim());
+      const fastSeek = Math.max(0, tsSec - 2).toFixed(3);
       await new Promise((resolve, reject) => {
         execFile(ffmpegBin, [
+          '-ss', fastSeek,
           '-i', videoPath,
           '-ss', String(timestamp).trim(),
           '-frames:v', '1',
           '-q:v', '2',
           '-y',
           outputPath
-        ], { timeout: 60000 }, (error) => {
+        ], { timeout: 30000 }, (error) => {
           if (error) reject(error);
           else resolve();
         });
@@ -608,15 +620,18 @@ function registerIpcHandlers(mainWindow, dataPath, store) {
         const outputPath = path.join(screenshotsDir, filename);
 
         try {
+          // 两步法：先快速 seek 到前2秒，再精确解码
+          const fastSeek = Math.max(0, parseFloat(ts) - 2).toFixed(3);
           await new Promise((resolve, reject) => {
             execFile(ffmpegBin, [
+              '-ss', fastSeek,
               '-i', videoPath,
               '-ss', ts,
               '-frames:v', '1',
               '-q:v', '2',
               '-y',
               outputPath
-            ], { timeout: 60000 }, (error) => {
+            ], { timeout: 30000 }, (error) => {
               if (error) reject(error);
               else resolve();
             });
